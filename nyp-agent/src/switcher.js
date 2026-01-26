@@ -49,10 +49,9 @@ export class Switcher {
     // 初始化检测器
     this.detector = new Detector({
       interface: config.interface,
-      curl_target: config.curl_target,
-      ping_target: config.ping_target,
+      curl_target_1: config.curl_target_1 || config.curl_target,
+      curl_target_2: config.curl_target_2,
       curl_timeout: config.curl_timeout,
-      ping_timeout: config.ping_timeout,
       bandwidth_threshold: config.bandwidth_threshold
     });
 
@@ -80,7 +79,7 @@ export class Switcher {
     this.stats.last_check = result.timestamp;
     this.stats.last_check_result = result;
 
-    console.log(`[Switcher] Check result: curl=${result.curl}, ping=${result.ping}, bandwidth=${result.bandwidth?.toFixed(2) || 'N/A'} Mbps`);
+    console.log(`[Switcher] Check result: target1=${result.target1}, target2=${result.target2}, bandwidth=${result.bandwidth?.toFixed(2) || 'N/A'} Mbps`);
 
     if (result.connectivity) {
       // 连通性正常，重置失败计数

@@ -8,10 +8,9 @@
   "fail_threshold": 10,
   "bandwidth_threshold": 10,
 
-  "curl_target": "baidu.com",
-  "ping_target": "223.5.5.5",
+  "curl_target_1": "baidu.com",
+  "curl_target_2": "https://223.5.5.5/dns-query",
   "curl_timeout": 3,
-  "ping_timeout": 3,
 
   "current": {
     "ip": "10.0.0.100",

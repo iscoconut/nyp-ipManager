@@ -6,15 +6,14 @@ const execAsync = promisify(exec);
 
 /**
  * IP 状态检测模块
- * 检测 curl、ping、网卡带宽
+ * 检测两个 curl 目标、网卡带宽
  */
 export class Detector {
   constructor(config) {
     this.interface = config.interface;
-    this.curlTarget = config.curl_target || 'baidu.com';
-    this.pingTarget = config.ping_target || '223.5.5.5';
+    this.curlTarget1 = config.curl_target_1 || config.curl_target || 'baidu.com';
+    this.curlTarget2 = config.curl_target_2 || 'https://223.5.5.5/dns-query';
     this.curlTimeout = config.curl_timeout || 3;
-    this.pingTimeout = config.ping_timeout || 3;
     this.bandwidthThreshold = config.bandwidth_threshold || 10; // Mbps
 
     // 用于计算带宽的上一次统计
@@ -24,12 +23,13 @@ export class Detector {
 
   /**
    * 执行 curl 检测
+   * @param {string} target 目标 URL
    * @returns {boolean} 成功返回 true
    */
-  async checkCurl() {
+  async curlCheck(target) {
     try {
       await execAsync(
-        `curl --interface ${this.interface} -so /dev/null -m ${this.curlTimeout} ${this.curlTarget}`,
+        `curl --interface ${this.interface} -so /dev/null -m ${this.curlTimeout} "${target}"`,
         { timeout: (this.curlTimeout + 2) * 1000 }
       );
       return true;
@@ -39,19 +39,17 @@ export class Detector {
   }
 
   /**
-   * 执行 ping 检测
-   * @returns {boolean} 成功返回 true
+   * 检测目标 1
    */
-  async checkPing() {
-    try {
-      await execAsync(
-        `ping -I ${this.interface} -c 1 -W ${this.pingTimeout} ${this.pingTarget}`,
-        { timeout: (this.pingTimeout + 2) * 1000 }
-      );
-      return true;
-    } catch (error) {
-      return false;
-    }
+  async checkTarget1() {
+    return await this.curlCheck(this.curlTarget1);
+  }
+
+  /**
+   * 检测目标 2
+   */
+  async checkTarget2() {
+    return await this.curlCheck(this.curlTarget2);
   }
 
   /**
@@ -144,28 +142,30 @@ export class Detector {
    * @returns {object} 检测结果
    */
   async check() {
-    const curlOk = await this.checkCurl();
-    const pingOk = await this.checkPing();
+    const target1Ok = await this.checkTarget1();
+    const target2Ok = await this.checkTarget2();
 
     const result = {
       timestamp: new Date().toISOString(),
       interface: this.interface,
-      curl: curlOk,
-      ping: pingOk,
-      connectivity: curlOk || pingOk, // 任一成功即连通
+      target1: target1Ok,
+      target2: target2Ok,
+      target1_url: this.curlTarget1,
+      target2_url: this.curlTarget2,
+      connectivity: target1Ok || target2Ok, // 任一成功即连通
       bandwidth: null,
       bandwidth_low: false,
       should_switch: false
     };
 
-    // 只有在 curl 和 ping 都失败时才检测带宽
-    if (!curlOk && !pingOk) {
+    // 只有在两个目标都失败时才检测带宽
+    if (!target1Ok && !target2Ok) {
       const bandwidth = await this.calculateBandwidth();
       result.bandwidth = bandwidth;
 
       if (bandwidth !== null) {
         result.bandwidth_low = bandwidth < this.bandwidthThreshold;
-        // curl/ping 都失败且带宽低于阈值，标记需要切换
+        // 两个目标都失败且带宽低于阈值，标记需要切换
         result.should_switch = result.bandwidth_low;
       }
     }
