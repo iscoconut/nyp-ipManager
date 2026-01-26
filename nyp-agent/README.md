@@ -14,7 +14,7 @@ nyanpass 节点 IP 故障转移 Agent。
 
 ```bash
 # 下载并安装
-git clone <repo-url> /tmp/nyp-ipManager
+git clone https://github.com/iscoconut/nyp-ipManager.git /tmp/nyp-ipManager
 cd /tmp/nyp-ipManager/nyp-agent
 chmod +x install.sh
 sudo ./install.sh
