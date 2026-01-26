@@ -4,7 +4,7 @@
   "config_file": "/etc/netplan/50-cloud-init.yaml",
   "route_table": 102,
 
-  "check_interval": 3000,
+  "check_interval": 5000,
   "fail_threshold": 10,
   "bandwidth_threshold": 10,
 

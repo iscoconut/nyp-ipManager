@@ -16,7 +16,7 @@ export class Switcher {
     // 状态
     this.failCount = 0;
     this.failThreshold = 10;
-    this.checkInterval = 3000; // 3秒
+    this.checkInterval = 5000; // 5秒
     this.isRunning = false;
     this.isSwitching = false;
     this.timer = null;

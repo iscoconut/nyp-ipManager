@@ -10,11 +10,33 @@ nyanpass 节点 IP 故障转移 Agent。
 - HTTP API 远程管理
 - IP 池管理，废弃 IP 追踪
 
-## 安装
+## 快速安装
+
+```bash
+# 下载并安装
+git clone <repo-url> /tmp/nyp-ipManager
+cd /tmp/nyp-ipManager/nyp-agent
+chmod +x install.sh
+sudo ./install.sh
+
+# 编辑配置
+sudo cp /opt/nyp-agent/config/config.example.json /opt/nyp-agent/config/config.json
+sudo nano /opt/nyp-agent/config/config.json
+
+# 启动并设置开机自启
+sudo systemctl start nyp-agent
+sudo systemctl enable nyp-agent
+
+# 查看日志
+sudo journalctl -u nyp-agent -f
+```
+
+## 手动安装
 
 ```bash
 cd nyp-agent
 npm install  # 无外部依赖
+npm start
 ```
 
 ## 配置
@@ -34,7 +56,7 @@ cp config/config.example.json config/config.json
 | `config_type` | `networking` 或 `netplan`（不填则自动检测） |
 | `config_file` | 网络配置文件路径 |
 | `route_table` | 策略路由表号 |
-| `check_interval` | 检测间隔，毫秒（默认 3000） |
+| `check_interval` | 检测间隔，毫秒（默认 5000） |
 | `fail_threshold` | 触发切换的失败次数（默认 10） |
 | `bandwidth_threshold` | 最低带宽阈值，Mbps（默认 10） |
 | `curl_target` | curl 检测目标（默认 baidu.com） |
@@ -129,7 +151,7 @@ AUTO_START=false npm start
 ## 检测逻辑
 
 ```
-每 3 秒执行:
+每 5 秒执行:
   1. curl baidu.com（绑定指定网卡）
   2. ping 223.5.5.5（绑定指定网卡）
 
@@ -145,6 +167,8 @@ AUTO_START=false npm start
     从 IP 池取下一个 IP 进行切换
     旧 IP 放入废弃池
 ```
+
+**故障检测时间**: 5秒 × 10次 = 50秒内发现故障并切换
 
 ## 网络配置
 
