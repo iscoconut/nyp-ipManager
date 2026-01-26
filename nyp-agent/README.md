@@ -12,23 +12,50 @@ nyanpass 节点 IP 故障转移 Agent。
 
 ## 快速安装
 
+### 1. 安装依赖
+
 ```bash
-# 下载并安装
+# Debian / Ubuntu
+apt update && apt install -y curl git
+
+# 安装 Node.js 20.x
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs
+
+# 验证安装
+node -v  # 需要 >= 18
+```
+
+### 2. 下载并安装
+
+```bash
 git clone https://github.com/iscoconut/nyp-ipManager.git /tmp/nyp-ipManager
 cd /tmp/nyp-ipManager/nyp-agent
 chmod +x install.sh
-sudo ./install.sh
+./install.sh
+```
 
-# 编辑配置
-sudo cp /opt/nyp-agent/config/config.example.json /opt/nyp-agent/config/config.json
-sudo nano /opt/nyp-agent/config/config.json
+### 3. 编辑配置
 
-# 启动并设置开机自启
-sudo systemctl start nyp-agent
-sudo systemctl enable nyp-agent
+```bash
+cp /opt/nyp-agent/config/config.example.json /opt/nyp-agent/config/config.json
+nano /opt/nyp-agent/config/config.json
+```
+
+### 4. 启动服务
+
+```bash
+# 启动
+systemctl start nyp-agent
+
+# 开机自启
+systemctl enable nyp-agent
 
 # 查看日志
-sudo journalctl -u nyp-agent -f
+journalctl -u nyp-agent -f
+
+# 查看状态
+curl http://localhost:3000/status
 ```
 
 ## 手动安装

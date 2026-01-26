@@ -17,17 +17,34 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 检查 Node.js
-if ! command -v node &> /dev/null; then
-  echo "未找到 Node.js，请先安装 Node.js >= 18"
-  exit 1
-fi
+# 检查并安装依赖
+install_dependencies() {
+  echo "[0/5] 检查依赖..."
 
-NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-if [ "$NODE_VERSION" -lt 18 ]; then
-  echo "Node.js 版本过低，需要 >= 18，当前: $(node -v)"
-  exit 1
-fi
+  # 检查 curl
+  if ! command -v curl &> /dev/null; then
+    echo "  -> 安装 curl..."
+    apt update && apt install -y curl
+  fi
+
+  # 检查 Node.js
+  if ! command -v node &> /dev/null; then
+    echo "  -> 安装 Node.js 20.x..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt install -y nodejs
+  else
+    NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+    if [ "$NODE_VERSION" -lt 18 ]; then
+      echo "  -> Node.js 版本过低 ($(node -v))，升级到 20.x..."
+      curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+      apt install -y nodejs
+    fi
+  fi
+
+  echo "  -> Node.js $(node -v) 已就绪"
+}
+
+install_dependencies
 
 echo "[1/5] 创建安装目录..."
 mkdir -p $INSTALL_DIR
