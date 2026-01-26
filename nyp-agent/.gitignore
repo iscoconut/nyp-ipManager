@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Config (contains real IPs)
+config/config.json
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

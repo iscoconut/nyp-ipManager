@@ -1,0 +1,39 @@
+{
+  "interface": "eth2",
+  "config_type": "networking",
+  "config_file": "/etc/network/interfaces.d/50-cloud-init",
+  "route_table": 102,
+
+  "check_interval": 3000,
+  "fail_threshold": 10,
+  "bandwidth_threshold": 10,
+
+  "curl_target": "baidu.com",
+  "ping_target": "223.5.5.5",
+  "curl_timeout": 3,
+  "ping_timeout": 3,
+
+  "current": {
+    "ip": "10.0.0.100",
+    "netmask": 24,
+    "gateway": "10.0.0.1",
+    "rule_from": "10.0.0.0/24"
+  },
+
+  "available": [
+    {
+      "ip": "10.0.0.101",
+      "netmask": 24,
+      "gateway": "10.0.0.1",
+      "rule_from": "10.0.0.0/24"
+    },
+    {
+      "ip": "10.0.0.102",
+      "netmask": 24,
+      "gateway": "10.0.0.1",
+      "rule_from": "10.0.0.0/24"
+    }
+  ],
+
+  "discarded": []
+}
