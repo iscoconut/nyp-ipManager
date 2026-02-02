@@ -3,12 +3,21 @@
 # nyp-agent 升级脚本
 # 用法: ./upgrade.sh
 
-set -e
-
 INSTALL_DIR="/opt/nyp-agent"
 SERVICE_NAME="nyp-agent"
 REPO_URL="https://github.com/iscoconut/nyp-ipManager.git"
 TEMP_DIR="/tmp/nyp-agent-upgrade-$$"
+SERVICE_STOPPED=false
+
+# 确保无论如何都重启服务
+cleanup() {
+  if [ "$SERVICE_STOPPED" = true ]; then
+    echo "  确保服务重启..."
+    systemctl start $SERVICE_NAME 2>/dev/null || true
+  fi
+  rm -rf "$TEMP_DIR" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 echo "=========================================="
 echo "nyp-agent 升级脚本"
@@ -43,7 +52,10 @@ echo "[2/5] 下载最新代码..."
 rm -rf "$TEMP_DIR"
 mkdir -p "$TEMP_DIR"
 
-git clone --depth 1 "$REPO_URL" "$TEMP_DIR/repo"
+if ! git clone --depth 1 "$REPO_URL" "$TEMP_DIR/repo" 2>&1; then
+  echo "  错误: git clone 失败"
+  exit 1
+fi
 NEW_VERSION=$(cd "$TEMP_DIR/repo" && git rev-parse --short HEAD)
 echo "  最新版本: $NEW_VERSION"
 
@@ -52,6 +64,7 @@ echo ""
 echo "[3/5] 停止服务..."
 if systemctl is-active --quiet $SERVICE_NAME; then
   systemctl stop $SERVICE_NAME
+  SERVICE_STOPPED=true
   echo "  服务已停止"
 else
   echo "  服务未运行"
@@ -96,6 +109,7 @@ echo ""
 echo "[5/5] 重启服务..."
 systemctl daemon-reload
 systemctl start $SERVICE_NAME
+SERVICE_STOPPED=false
 
 # 等待服务启动
 sleep 2
