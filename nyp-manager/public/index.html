@@ -399,7 +399,7 @@
             <div v-if="testReportResult" :style="{ padding: '10px', marginBottom: '15px', borderRadius: '4px', background: testReportResult.success ? '#d4edda' : '#f8d7da', color: testReportResult.success ? '#155724' : '#721c24' }">
               <strong>{{ testReportResult.message }}</strong>
               <div v-if="testReportResult.ip" style="margin-top: 5px;">上报 IP: {{ testReportResult.ip }}</div>
-              <div v-if="testReportResult.details" style="margin-top: 5px; font-size: 13px;">{{ testReportResult.details }}</div>
+              <div v-if="testReportResult.details" style="margin-top: 5px; font-size: 13px; white-space: pre-line;">{{ testReportResult.details }}</div>
             </div>
 
             <div v-if="nodeReporters.length">
@@ -967,11 +967,14 @@
                 details: result.error
               };
             } else {
+              // 检查是否有失败的上报
+              const hasFailure = result.results?.some(r => !r.success);
+              const allFailed = result.results?.every(r => !r.success);
               testReportResult.value = {
-                success: true,
-                message: '上报成功',
+                success: !allFailed,
+                message: allFailed ? '上报失败' : (hasFailure ? '部分上报失败' : '上报成功'),
                 ip: result.current_ip,
-                details: result.results?.map(r => `${r.type}: ${r.success ? '成功' : '失败'}`).join(', ')
+                details: result.results?.map(r => `${r.type}: ${r.success ? '成功' : '失败 - ' + (r.message || '未知错误')}`).join('\n')
               };
             }
           } catch (e) {
