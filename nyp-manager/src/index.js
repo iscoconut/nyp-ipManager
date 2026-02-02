@@ -11,6 +11,7 @@ import {
 } from './db.js';
 import { getDispatcher } from './reporters/index.js';
 import { VERSION } from './version.js';
+import { initWebSocket, updateNodeStatusAndBroadcast, broadcastNodesUpdate } from './ws.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -695,6 +696,52 @@ async function handleAPI(req, res, pathname, method, url) {
 }
 
 /**
+ * 获取单个节点状态
+ */
+async function fetchNodeStatus(node) {
+  try {
+    const agentUrl = `${node.url}/status`;
+    const headers = {};
+    if (node.token) {
+      headers['Authorization'] = `Bearer ${node.token}`;
+    }
+    const response = await fetch(agentUrl, { headers, signal: AbortSignal.timeout(5000) });
+    if (!response.ok) {
+      return { error: true, message: `HTTP ${response.status}` };
+    }
+    return await response.json();
+  } catch (error) {
+    return { error: true, message: error.message };
+  }
+}
+
+/**
+ * 启动后台状态刷新任务
+ */
+function startStatusRefreshJob() {
+  const REFRESH_INTERVAL = 10000; // 10秒刷新一次
+
+  async function refreshAllNodes() {
+    const nodes = getAllNodes();
+    for (const node of nodes) {
+      const status = await fetchNodeStatus(node);
+      if (!status.error) {
+        updateNodeStatusAndBroadcast(node.id, status);
+      } else {
+        updateNodeStatusAndBroadcast(node.id, { error: true, message: status.message });
+      }
+    }
+  }
+
+  // 立即执行一次
+  refreshAllNodes();
+
+  // 定时执行
+  setInterval(refreshAllNodes, REFRESH_INTERVAL);
+  console.log(`[Status] Background refresh job started (interval: ${REFRESH_INTERVAL / 1000}s)`);
+}
+
+/**
  * 主函数
  */
 async function main() {
@@ -714,29 +761,17 @@ async function main() {
   // 启动 HTTP 服务
   const server = http.createServer(handleRequest);
 
+  // 初始化 WebSocket
+  const verifyWsToken = API_TOKEN ? (token) => token === API_TOKEN : null;
+  initWebSocket(server, verifyWsToken);
+
+  // 启动后台状态刷新任务
+  startStatusRefreshJob();
+
   server.listen(API_PORT, API_HOST, () => {
     console.log(`[API] Server listening on ${API_HOST}:${API_PORT}`);
+    console.log(`[WS]  WebSocket available at ws://${API_HOST}:${API_PORT}/ws`);
     console.log(`Auth: ${API_TOKEN ? 'enabled' : 'disabled'}`);
-    console.log('');
-    console.log('API Endpoints:');
-    console.log('  Agent:');
-    console.log('    POST /api/agent/report    - Status report');
-    console.log('    POST /api/agent/callback  - IP switch callback');
-    console.log('  Nodes:');
-    console.log('    GET    /api/nodes         - List all nodes');
-    console.log('    GET    /api/nodes/:id     - Get node');
-    console.log('    POST   /api/nodes         - Create node');
-    console.log('    PUT    /api/nodes/:id     - Update node');
-    console.log('    DELETE /api/nodes/:id     - Delete node');
-    console.log('    POST   /api/nodes/:id/switch - Trigger switch');
-    console.log('    GET    /api/nodes/:id/pool   - Get IP pool');
-    console.log('  Reporters:');
-    console.log('    GET    /api/nodes/:id/reporters - List reporters');
-    console.log('    POST   /api/nodes/:id/reporters - Create reporter');
-    console.log('    PUT    /api/reporters/:id       - Update reporter');
-    console.log('    DELETE /api/reporters/:id       - Delete reporter');
-    console.log('  Logs:');
-    console.log('    GET    /api/logs          - Get logs');
     console.log('');
   });
 

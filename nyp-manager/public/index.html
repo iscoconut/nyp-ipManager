@@ -620,6 +620,9 @@
             authenticated.value = true;
             nodes.value = result;
 
+            // 连接 WebSocket
+            connectWebSocket();
+
             // 清除 URL 中的 token 参数
             if (window.location.search) {
               window.history.replaceState({}, '', window.location.pathname);
@@ -639,6 +642,93 @@
           inputToken.value = '';
           localStorage.removeItem('api_token');
           nodes.value = [];
+          disconnectWebSocket();
+        }
+
+        // WebSocket 连接
+        let ws = null;
+        let wsReconnectTimer = null;
+
+        function connectWebSocket() {
+          if (ws && ws.readyState === WebSocket.OPEN) return;
+
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(API_TOKEN)}`;
+
+          console.log('[WS] Connecting...');
+          ws = new WebSocket(wsUrl);
+
+          ws.onopen = () => {
+            console.log('[WS] Connected');
+            // 清除重连定时器
+            if (wsReconnectTimer) {
+              clearTimeout(wsReconnectTimer);
+              wsReconnectTimer = null;
+            }
+          };
+
+          ws.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(event.data);
+              handleWsMessage(msg);
+            } catch (e) {
+              console.error('[WS] Failed to parse message:', e);
+            }
+          };
+
+          ws.onclose = () => {
+            console.log('[WS] Disconnected');
+            ws = null;
+            // 如果已认证，尝试重连
+            if (authenticated.value && !wsReconnectTimer) {
+              wsReconnectTimer = setTimeout(() => {
+                wsReconnectTimer = null;
+                connectWebSocket();
+              }, 3000);
+            }
+          };
+
+          ws.onerror = (error) => {
+            console.error('[WS] Error:', error);
+          };
+        }
+
+        function disconnectWebSocket() {
+          if (wsReconnectTimer) {
+            clearTimeout(wsReconnectTimer);
+            wsReconnectTimer = null;
+          }
+          if (ws) {
+            ws.close();
+            ws = null;
+          }
+        }
+
+        function handleWsMessage(msg) {
+          if (msg.type === 'nodes') {
+            // 完整节点列表（包含状态）
+            nodes.value = msg.data.map(node => ({
+              ...node,
+              _loading: false,
+              _refreshing: false,
+              _error: node.status?.error || false
+            }));
+            // 更新缓存
+            setCachedNodes(nodes.value.filter(n => n.status && !n._error));
+          } else if (msg.type === 'node_status') {
+            // 单个节点状态更新
+            const idx = nodes.value.findIndex(n => n.id === msg.nodeId);
+            if (idx !== -1) {
+              const node = nodes.value[idx];
+              if (msg.status.error) {
+                nodes.value[idx] = { ...node, _loading: false, _refreshing: false, _error: true };
+              } else {
+                nodes.value[idx] = { ...node, status: msg.status, _loading: false, _refreshing: false, _error: false };
+              }
+              // 更新缓存
+              setCachedNodes(nodes.value.filter(n => n.status && !n._error));
+            }
+          }
         }
 
         // 加载 Manager 版本
@@ -691,20 +781,32 @@
           try {
             const nodeList = await api('GET', '/nodes');
 
-            // 先尝试显示缓存的状态
+            // WebSocket 连接时，使用缓存数据，等待 WS 推送更新
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              const cached = getCachedNodes();
+              nodes.value = nodeList.map(node => {
+                const cachedNode = cached?.find(n => n.id === node.id);
+                if (cachedNode?.status) {
+                  return { ...node, status: cachedNode.status, _loading: false, _refreshing: false, _error: false };
+                }
+                // 无缓存，等待 WS 推送
+                return { ...node, _loading: true, _refreshing: false };
+              });
+              return;
+            }
+
+            // 无 WebSocket，使用 HTTP 轮询
             const cached = getCachedNodes();
             nodes.value = nodeList.map(node => {
               const cachedNode = cached?.find(n => n.id === node.id);
               if (cachedNode?.status) {
-                // 有缓存，直接显示缓存数据，后台静默刷新
                 return { ...node, status: cachedNode.status, _loading: false, _refreshing: true, _error: false };
               }
-              // 无缓存才显示加载中
               return { ...node, _loading: true, _refreshing: false };
             });
 
-            // 并行获取状态，每个完成后立即更新
-            nodeList.forEach(async (node, index) => {
+            // 并行获取状态
+            nodeList.forEach(async (node) => {
               try {
                 const status = await api('GET', `/nodes/${node.id}/status`);
                 const idx = nodes.value.findIndex(n => n.id === node.id);
@@ -712,7 +814,6 @@
                   if (status && !status.error) {
                     nodes.value[idx] = { ...node, status, _loading: false, _refreshing: false, _error: false };
                   } else {
-                    // 获取失败但有缓存，保留缓存数据
                     const hadCache = nodes.value[idx].status && !nodes.value[idx]._loading;
                     if (hadCache) {
                       nodes.value[idx] = { ...nodes.value[idx], _refreshing: false, _stale: true };
@@ -720,13 +821,11 @@
                       nodes.value[idx] = { ...node, _loading: false, _refreshing: false, _error: true };
                     }
                   }
-                  // 更新缓存
                   setCachedNodes(nodes.value.filter(n => n.status && !n._error));
                 }
               } catch (e) {
                 const idx = nodes.value.findIndex(n => n.id === node.id);
                 if (idx !== -1) {
-                  // 获取失败但有缓存，保留缓存数据
                   const hadCache = nodes.value[idx].status && !nodes.value[idx]._loading;
                   if (hadCache) {
                     nodes.value[idx] = { ...nodes.value[idx], _refreshing: false, _stale: true };
@@ -1123,9 +1222,9 @@
           }
         });
 
-        // 定时刷新
+        // 定时刷新（仅在 WebSocket 未连接时）
         setInterval(() => {
-          if (authenticated.value) {
+          if (authenticated.value && (!ws || ws.readyState !== WebSocket.OPEN)) {
             loadNodes();
           }
         }, 30000);
