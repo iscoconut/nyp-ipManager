@@ -10,12 +10,76 @@ nyanpass 节点 IP 故障转移中心管理面板。
 - 配置上报目标（nyanpass、阿里云等）
 - 自动上报 IP 变更到第三方平台
 - 操作日志记录
+- Web 管理界面
 
-## 安装
+## 快速安装
+
+### 1. 安装依赖
+
+```bash
+# Debian / Ubuntu
+apt update && apt install -y curl git
+
+# 安装 Node.js 20.x
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs
+
+# 验证安装
+node -v  # 需要 >= 18
+```
+
+### 2. 下载并安装
+
+```bash
+git clone https://github.com/iscoconut/nyp-ipManager.git /tmp/nyp-ipManager
+cd /tmp/nyp-ipManager/nyp-manager
+chmod +x install.sh
+./install.sh
+```
+
+### 3. 配置 Token（推荐）
+
+```bash
+nano /etc/systemd/system/nyp-manager.service
+```
+
+取消注释并修改 `API_TOKEN`：
+
+```ini
+Environment=API_TOKEN=your-secret-token
+```
+
+重新加载服务配置：
+
+```bash
+systemctl daemon-reload
+```
+
+### 4. 启动服务
+
+```bash
+# 启动
+systemctl start nyp-manager
+
+# 开机自启
+systemctl enable nyp-manager
+
+# 查看日志
+journalctl -u nyp-manager -f
+```
+
+### 5. 访问管理界面
+
+打开浏览器访问：`http://YOUR_SERVER_IP:3001`
+
+如果设置了 Token，访问时需要带上 Token：`http://YOUR_SERVER_IP:3001?token=your-secret-token`
+
+## 手动安装
 
 ```bash
 cd nyp-manager
 npm install
+npm start
 ```
 
 ## 配置
@@ -38,9 +102,51 @@ npm start
 
 # 或指定 Token
 API_TOKEN=your-secret npm start
+
+# 指定端口
+API_PORT=8080 npm start
 ```
 
 访问 `http://localhost:3001` 进入管理界面。
+
+## 添加节点
+
+1. 在管理界面点击「添加节点」
+2. 填写节点信息：
+   - **节点 ID**：唯一标识（如 `node-1`）
+   - **名称**：显示名称（如「香港节点1」）
+   - **Agent URL**：Agent 地址（如 `http://1.2.3.4:3000`）
+   - **Token**：Agent 的 API Token（可选）
+
+3. 在 Agent 的配置文件中添加 Manager 配置：
+
+```json
+{
+  "manager": {
+    "url": "http://manager-server:3001",
+    "token": "manager-auth-token",
+    "node_id": "node-1",
+    "report_interval": 60000
+  }
+}
+```
+
+## 配置 Nyanpass 上报
+
+1. 在管理界面选择节点
+2. 点击「上报配置」→「添加上报」
+3. 填写配置：
+
+```json
+{
+  "admin_url": "https://nya.example.com",
+  "username": "admin",
+  "password": "your-password",
+  "device_group_id": 24
+}
+```
+
+当 Agent 切换 IP 后，Manager 会自动将新 IP 上报到 nyanpass 面板。
 
 ## API 接口
 
@@ -68,25 +174,6 @@ API_TOKEN=your-secret npm start
 | DELETE | `/api/reporters/:id` | 删除上报配置 |
 | GET | `/api/logs` | 获取操作日志 |
 
-## 上报配置
-
-### Nyanpass
-
-创建上报配置时，`config` 格式：
-
-```json
-{
-  "admin_url": "https://nya.example.com",
-  "username": "admin",
-  "password": "your-password",
-  "device_group_id": 24
-}
-```
-
-### 阿里云（待实现）
-
-预留接口，后续实现。
-
 ## 工作流程
 
 ```
@@ -104,6 +191,43 @@ Manager 记录日志
       ▼
 Manager 根据配置自动上报到 nyanpass/阿里云等
 ```
+
+## 目录结构
+
+```
+/opt/nyp-manager/
+├── src/
+│   ├── index.js          # 主入口
+│   ├── db.js             # 数据库
+│   └── reporters/        # 上报模块
+│       ├── index.js
+│       └── nyanpass.js
+├── public/
+│   └── index.html        # Web 界面
+├── data/
+│   └── manager.db        # SQLite 数据库
+├── config/
+└── package.json
+```
+
+## 常见问题
+
+### 无法连接 Agent
+
+1. 检查 Agent 是否运行：`curl http://AGENT_IP:3000/health`
+2. 检查防火墙是否开放 3000 端口
+3. 检查 Agent 配置的 Token 是否正确
+
+### 上报失败
+
+1. 检查 nyanpass 面板地址是否正确
+2. 检查用户名密码是否正确
+3. 检查 device_group_id 是否存在
+4. 查看 Manager 日志：`journalctl -u nyp-manager -f`
+
+### 数据库损坏
+
+数据库文件位于 `/opt/nyp-manager/data/manager.db`，可删除后重启服务重建。
 
 ## 许可证
 
