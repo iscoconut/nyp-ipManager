@@ -6,6 +6,7 @@
 INSTALL_DIR="/opt/nyp-agent"
 SERVICE_NAME="nyp-agent"
 REPO_URL="https://github.com/iscoconut/nyp-ipManager.git"
+REPO_BRANCH="claude/nyanpass-ip-failover-YnjfT"
 TEMP_DIR="/tmp/nyp-agent-upgrade-$$"
 SERVICE_STOPPED=false
 
@@ -52,7 +53,7 @@ echo "[2/5] 下载最新代码..."
 rm -rf "$TEMP_DIR"
 mkdir -p "$TEMP_DIR"
 
-if ! git clone --depth 1 "$REPO_URL" "$TEMP_DIR/repo" 2>&1; then
+if ! git clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" "$TEMP_DIR/repo" 2>&1; then
   echo "  错误: git clone 失败"
   exit 1
 fi

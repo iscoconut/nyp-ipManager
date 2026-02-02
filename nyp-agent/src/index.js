@@ -249,11 +249,12 @@ async function handleRequest(req, res) {
         try {
           const tempDir = `/tmp/nyp-agent-upgrade-${Date.now()}`;
           const repoUrl = 'https://github.com/iscoconut/nyp-ipManager.git';
+          const repoBranch = 'claude/nyanpass-ip-failover-YnjfT';
           const upgradeScript = '/opt/nyp-agent/upgrade.sh';
 
           // 先下载最新的 upgrade.sh，防止旧脚本损坏
           console.log('[API] Downloading latest upgrade script...');
-          await execAsync(`rm -rf ${tempDir} && git clone --depth 1 ${repoUrl} ${tempDir}`, { timeout: 60000 });
+          await execAsync(`rm -rf ${tempDir} && git clone --depth 1 -b ${repoBranch} ${repoUrl} ${tempDir}`, { timeout: 60000 });
           await execAsync(`cp ${tempDir}/nyp-agent/upgrade.sh ${upgradeScript} && chmod +x ${upgradeScript}`, { timeout: 5000 });
           await execAsync(`rm -rf ${tempDir}`, { timeout: 5000 });
 
