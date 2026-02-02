@@ -61,6 +61,8 @@
     /* Header */
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .header h1 { margin-bottom: 0; }
+    .header-right { display: flex; align-items: center; gap: 15px; }
+    .version-info { font-size: 13px; color: #666; }
     .logout-btn { background: none; border: none; color: #666; cursor: pointer; font-size: 14px; }
     .logout-btn:hover { color: #333; }
 
@@ -111,7 +113,13 @@
     <div v-else class="container">
       <div class="header">
         <h1>NYP Manager</h1>
-        <button class="logout-btn" @click="logout">退出登录</button>
+        <div class="header-right">
+          <span class="version-info">v{{ managerVersion }}</span>
+          <button class="btn btn-sm btn-success" @click="upgradeManager" :disabled="upgradingManager">
+            {{ upgradingManager ? '升级中...' : '升级面板' }}
+          </button>
+          <button class="logout-btn" @click="logout">退出登录</button>
+        </div>
       </div>
 
       <!-- Tabs -->
@@ -286,6 +294,13 @@
           <!-- Agent Config Tab -->
           <div v-if="detailTab === 'agentConfig'">
             <div v-if="agentConfig">
+              <div v-if="agentVersion" style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <span>Agent 版本: <strong>v{{ agentVersion }}</strong></span>
+                <button class="btn btn-sm btn-success" @click="upgradeAgent" :disabled="upgradingAgent">
+                  {{ upgradingAgent ? '升级中...' : '升级 Agent' }}
+                </button>
+              </div>
+
               <h4 style="margin: 15px 0 10px;">网络配置</h4>
               <div class="form-group">
                 <label>网卡接口</label>
@@ -353,16 +368,11 @@
                 <input v-model="agentConfig.api_token" placeholder="Agent 的 API Token">
               </div>
 
-              <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <button class="btn btn-primary" @click="saveAgentConfig" :disabled="savingAgentConfig">
-                    {{ savingAgentConfig ? '保存中...' : '保存配置' }}
-                  </button>
-                  <span v-if="agentConfigSaved" style="color: #28a745; margin-left: 10px;">已保存</span>
-                </div>
-                <button class="btn btn-success" @click="upgradeAgent" :disabled="upgradingAgent">
-                  {{ upgradingAgent ? '升级中...' : '升级 Agent' }}
+              <div style="margin-top: 20px;">
+                <button class="btn btn-primary" @click="saveAgentConfig" :disabled="savingAgentConfig">
+                  {{ savingAgentConfig ? '保存中...' : '保存配置' }}
                 </button>
+                <span v-if="agentConfigSaved" style="color: #28a745; margin-left: 10px;">已保存</span>
               </div>
             </div>
             <div v-else-if="agentConfigError" style="color: #dc3545; text-align: center; padding: 20px;">
@@ -525,12 +535,17 @@
         const showAddIP = ref(false);
         const newIP = reactive({ ip: '', netmask: '24', gateway: '', rule_from: '' });
 
+        // Manager 版本
+        const managerVersion = ref('...');
+        const upgradingManager = ref(false);
+
         // Agent 配置
         const agentConfig = ref(null);
         const agentConfigError = ref('');
         const savingAgentConfig = ref(false);
         const agentConfigSaved = ref(false);
         const upgradingAgent = ref(false);
+        const agentVersion = ref('');
 
         const showAddReporter = ref(false);
         const newReporter = reactive({
@@ -603,6 +618,37 @@
           inputToken.value = '';
           localStorage.removeItem('api_token');
           nodes.value = [];
+        }
+
+        // 加载 Manager 版本
+        async function loadManagerVersion() {
+          try {
+            const result = await fetch('/api/version').then(r => r.json());
+            managerVersion.value = result.version || '未知';
+          } catch (e) {
+            managerVersion.value = '未知';
+          }
+        }
+
+        // 升级 Manager
+        async function upgradeManager() {
+          if (!confirm('确定升级 Manager？升级过程中面板会短暂不可用。')) return;
+
+          upgradingManager.value = true;
+          try {
+            const result = await api('POST', '/upgrade');
+            if (result.error) {
+              alert('升级失败: ' + result.error);
+              return;
+            }
+            alert('升级成功！面板正在重启，请稍后刷新页面...');
+            // 5秒后自动刷新
+            setTimeout(() => window.location.reload(), 5000);
+          } catch (e) {
+            alert('升级失败: ' + e.message);
+          } finally {
+            upgradingManager.value = false;
+          }
         }
 
         // 加载节点列表
@@ -744,34 +790,44 @@
           agentConfig.value = null;
           agentConfigError.value = '';
           agentConfigSaved.value = false;
+          agentVersion.value = '';
 
           try {
-            const result = await api('GET', `/nodes/${selectedNode.value.id}/agent-config`);
-            if (result.error) {
-              agentConfigError.value = result.error;
+            // 同时加载配置和版本
+            const [configResult, versionResult] = await Promise.all([
+              api('GET', `/nodes/${selectedNode.value.id}/agent-config`),
+              api('GET', `/nodes/${selectedNode.value.id}/agent-version`).catch(() => ({ version: '' }))
+            ]);
+
+            if (configResult.error) {
+              agentConfigError.value = configResult.error;
               return;
             }
+
+            // 设置 Agent 版本
+            agentVersion.value = versionResult.version || '';
+
             // 确保 manager 对象存在，并自动填充
-            if (!result.manager) {
-              result.manager = {};
+            if (!configResult.manager) {
+              configResult.manager = {};
             }
             // 自动填充 Manager URL（如果为空）
-            if (!result.manager.url) {
-              result.manager.url = window.location.origin;
+            if (!configResult.manager.url) {
+              configResult.manager.url = window.location.origin;
             }
             // 自动填充 Manager Token（如果为空）
-            if (!result.manager.token) {
-              result.manager.token = API_TOKEN;
+            if (!configResult.manager.token) {
+              configResult.manager.token = API_TOKEN;
             }
             // 自动填充节点 ID（如果为空）
-            if (!result.manager.node_id) {
-              result.manager.node_id = selectedNode.value.id;
+            if (!configResult.manager.node_id) {
+              configResult.manager.node_id = selectedNode.value.id;
             }
             // 设置默认上报间隔
-            if (!result.manager.report_interval) {
-              result.manager.report_interval = 60000;
+            if (!configResult.manager.report_interval) {
+              configResult.manager.report_interval = 60000;
             }
-            agentConfig.value = result;
+            agentConfig.value = configResult;
           } catch (e) {
             agentConfigError.value = e.message;
           }
@@ -884,6 +940,9 @@
         }
 
         onMounted(async () => {
+          // 加载 Manager 版本
+          loadManagerVersion();
+
           // 检查 URL 参数中的 token
           const urlParams = new URLSearchParams(window.location.search);
           const urlToken = urlParams.get('token');
@@ -906,11 +965,12 @@
 
         return {
           authenticated, inputToken, loginError, logging, login, logout,
+          managerVersion, upgradingManager, upgradeManager,
           currentTab, nodes, logs, logFilter,
           showAddNode, newNode,
           selectedNode, detailTab, nodePool, nodePoolError, nodeReporters,
           showAddIP, newIP,
-          agentConfig, agentConfigError, savingAgentConfig, agentConfigSaved, upgradingAgent,
+          agentConfig, agentConfigError, savingAgentConfig, agentConfigSaved, upgradingAgent, agentVersion,
           showAddReporter, newReporter,
           loadNodes, loadLogs, addNode, deleteNodeConfirm,
           showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,

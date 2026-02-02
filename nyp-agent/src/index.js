@@ -6,6 +6,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { Switcher } from './switcher.js';
 import { Reporter } from './reporter.js';
+import { VERSION } from './version.js';
 
 const execAsync = promisify(exec);
 
@@ -98,6 +99,11 @@ async function handleRequest(req, res) {
     // GET /health - 健康检查
     if (method === 'GET' && pathname === '/health') {
       return jsonResponse(res, { status: 'ok', timestamp: new Date().toISOString() });
+    }
+
+    // GET /version - 获取版本
+    if (method === 'GET' && pathname === '/version') {
+      return jsonResponse(res, { version: VERSION });
     }
 
     // GET /status - 获取当前状态

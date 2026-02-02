@@ -3,6 +3,8 @@ import { URL } from 'url';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import {
   initDB,
   getAllNodes, getNode, createNode, updateNode, updateNodeStatus, deleteNode,
@@ -10,6 +12,9 @@ import {
   getLogs, addLog
 } from './db.js';
 import { getDispatcher } from './reporters/index.js';
+import { VERSION } from './version.js';
+
+const execAsync = promisify(exec);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -165,6 +170,13 @@ async function handleRequest(req, res) {
  */
 async function handleAPI(req, res, pathname, method, url) {
   try {
+    // ========== 公开接口（不需要 Token） ==========
+
+    // GET /api/version - 获取版本
+    if (method === 'GET' && pathname === '/api/version') {
+      return jsonResponse(res, { version: VERSION });
+    }
+
     // ========== Agent 上报接口（不需要管理员 Token） ==========
 
     // POST /api/agent/report - Agent 状态上报
@@ -471,6 +483,29 @@ async function handleAPI(req, res, pathname, method, url) {
       }
     }
 
+    // GET /api/nodes/:id/agent-version - 获取 Agent 版本
+    if (method === 'GET' && pathname.match(/^\/api\/nodes\/[^/]+\/agent-version$/)) {
+      const nodeId = pathname.split('/')[3];
+      const node = getNode(nodeId);
+      if (!node) {
+        return jsonResponse(res, { error: 'Node not found' }, 404);
+      }
+
+      try {
+        const agentUrl = `${node.url}/version`;
+        const headers = {};
+        if (node.token) {
+          headers['Authorization'] = `Bearer ${node.token}`;
+        }
+
+        const response = await fetch(agentUrl, { headers });
+        const result = await response.json();
+        return jsonResponse(res, result, response.ok ? 200 : 400);
+      } catch (error) {
+        return jsonResponse(res, { error: `Failed to contact agent: ${error.message}` }, 500);
+      }
+    }
+
     // PUT /api/nodes/:id/agent-config - 更新 Agent 配置
     if (method === 'PUT' && pathname.match(/^\/api\/nodes\/[^/]+\/agent-config$/)) {
       const nodeId = pathname.split('/')[3];
@@ -592,6 +627,27 @@ async function handleAPI(req, res, pathname, method, url) {
       const offset = parseInt(url.searchParams.get('offset') || '0');
       const logs = getLogs({ nodeId, limit, offset });
       return jsonResponse(res, logs);
+    }
+
+    // POST /api/upgrade - Manager 自身升级
+    if (method === 'POST' && pathname === '/api/upgrade') {
+      console.log('[API] Manager self-upgrade triggered');
+
+      // 发送响应后再执行升级
+      jsonResponse(res, { message: 'Upgrade started, manager will restart shortly' });
+
+      // 延迟执行升级，确保响应已发送
+      setTimeout(async () => {
+        try {
+          const upgradeScript = '/opt/nyp-manager/upgrade.sh';
+          console.log(`[API] Executing upgrade script: ${upgradeScript}`);
+          await execAsync(`bash ${upgradeScript}`, { timeout: 120000 });
+        } catch (error) {
+          console.error(`[API] Upgrade error: ${error.message}`);
+        }
+      }, 500);
+
+      return;
     }
 
     // 404
