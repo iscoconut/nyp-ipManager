@@ -696,23 +696,29 @@
             nodes.value = nodeList.map(node => {
               const cachedNode = cached?.find(n => n.id === node.id);
               if (cachedNode?.status) {
-                // 有缓存，显示缓存数据，标记为刷新中
-                return { ...node, status: cachedNode.status, _loading: true, _error: false };
+                // 有缓存，直接显示缓存数据，后台静默刷新
+                return { ...node, status: cachedNode.status, _loading: false, _refreshing: true, _error: false };
               }
-              return { ...node, _loading: true };
+              // 无缓存才显示加载中
+              return { ...node, _loading: true, _refreshing: false };
             });
 
             // 并行获取状态，每个完成后立即更新
             nodeList.forEach(async (node, index) => {
               try {
                 const status = await api('GET', `/nodes/${node.id}/status`);
-                // 找到当前节点并更新
                 const idx = nodes.value.findIndex(n => n.id === node.id);
                 if (idx !== -1) {
                   if (status && !status.error) {
-                    nodes.value[idx] = { ...node, status, _loading: false, _error: false };
+                    nodes.value[idx] = { ...node, status, _loading: false, _refreshing: false, _error: false };
                   } else {
-                    nodes.value[idx] = { ...node, _loading: false, _error: true };
+                    // 获取失败但有缓存，保留缓存数据
+                    const hadCache = nodes.value[idx].status && !nodes.value[idx]._loading;
+                    if (hadCache) {
+                      nodes.value[idx] = { ...nodes.value[idx], _refreshing: false, _stale: true };
+                    } else {
+                      nodes.value[idx] = { ...node, _loading: false, _refreshing: false, _error: true };
+                    }
                   }
                   // 更新缓存
                   setCachedNodes(nodes.value.filter(n => n.status && !n._error));
@@ -720,7 +726,13 @@
               } catch (e) {
                 const idx = nodes.value.findIndex(n => n.id === node.id);
                 if (idx !== -1) {
-                  nodes.value[idx] = { ...node, _loading: false, _error: true };
+                  // 获取失败但有缓存，保留缓存数据
+                  const hadCache = nodes.value[idx].status && !nodes.value[idx]._loading;
+                  if (hadCache) {
+                    nodes.value[idx] = { ...nodes.value[idx], _refreshing: false, _stale: true };
+                  } else {
+                    nodes.value[idx] = { ...node, _loading: false, _refreshing: false, _error: true };
+                  }
                 }
               }
             });
