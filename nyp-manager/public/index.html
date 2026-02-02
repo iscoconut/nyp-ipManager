@@ -143,7 +143,6 @@
                 <th>当前 IP</th>
                 <th>状态</th>
                 <th>IP 池</th>
-                <th>最后上报</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -153,19 +152,29 @@
                   <strong>{{ node.name }}</strong>
                   <br><small style="color: #666;">{{ node.id }}</small>
                 </td>
-                <td>{{ node.status?.current_ip?.ip || '-' }}</td>
+                <td>
+                  <span v-if="node._loading" style="color: #666;">读取中...</span>
+                  <span v-else-if="node._error" style="color: #dc3545;">读取失败</span>
+                  <span v-else>{{ node.status?.current_ip?.ip || '-' }}</span>
+                </td>
                 <td>
                   <span class="badge" :class="getStatusClass(node)">
                     {{ getStatusText(node) }}
                   </span>
                 </td>
                 <td>
-                  <span class="badge badge-info">可用: {{ node.status?.pool?.available || 0 }}</span>
-                  <span class="badge badge-warning" v-if="node.status?.pool?.discarded">废弃: {{ node.status.pool.discarded }}</span>
+                  <span v-if="node._loading" style="color: #666;">-</span>
+                  <span v-else-if="node._error">-</span>
+                  <template v-else>
+                    <span class="badge badge-info">可用: {{ node.status?.pool?.available || 0 }}</span>
+                    <span class="badge badge-warning" v-if="node.status?.pool?.discarded">废弃: {{ node.status.pool.discarded }}</span>
+                  </template>
                 </td>
-                <td>{{ formatTime(node.last_report_at) }}</td>
                 <td>
                   <button class="btn btn-sm btn-primary" @click="showNodeDetail(node)">详情</button>
+                  <button class="btn btn-sm btn-success" @click="upgradeNodeAgent(node)" :disabled="node._upgrading">
+                    {{ node._upgrading ? '升级中' : '升级' }}
+                  </button>
                   <button class="btn btn-sm btn-danger" @click="deleteNodeConfirm(node)">删除</button>
                 </td>
               </tr>
@@ -652,29 +661,32 @@
           }
         }
 
-        // 加载节点列表
+        // 加载节点列表（渐进式）
         async function loadNodes() {
           try {
             const nodeList = await api('GET', '/nodes');
-            nodes.value = nodeList;
+            // 先显示所有节点，标记为加载中
+            nodes.value = nodeList.map(node => ({ ...node, _loading: true }));
 
-            // 并行获取所有节点的实时状态
-            const statusPromises = nodeList.map(node =>
-              api('GET', `/nodes/${node.id}/status`).catch(() => null)
-            );
-            const statuses = await Promise.all(statusPromises);
-
-            // 批量更新状态（触发 Vue 响应式）
-            nodes.value = nodeList.map((node, index) => {
-              const status = statuses[index];
-              if (status && !status.error) {
-                return {
-                  ...node,
-                  status: status,
-                  last_report_at: new Date().toISOString()
-                };
+            // 并行获取状态，每个完成后立即更新
+            nodeList.forEach(async (node, index) => {
+              try {
+                const status = await api('GET', `/nodes/${node.id}/status`);
+                // 找到当前节点并更新
+                const idx = nodes.value.findIndex(n => n.id === node.id);
+                if (idx !== -1) {
+                  if (status && !status.error) {
+                    nodes.value[idx] = { ...node, status, _loading: false, _error: false };
+                  } else {
+                    nodes.value[idx] = { ...node, _loading: false, _error: true };
+                  }
+                }
+              } catch (e) {
+                const idx = nodes.value.findIndex(n => n.id === node.id);
+                if (idx !== -1) {
+                  nodes.value[idx] = { ...node, _loading: false, _error: true };
+                }
               }
-              return node;
             });
           } catch (e) {
             console.error('加载节点失败', e);
@@ -939,25 +951,45 @@
 
         // 获取状态样式
         function getStatusClass(node) {
-          if (!node.last_report_at) return 'badge-warning';
-          const lastReport = new Date(node.last_report_at);
-          const now = new Date();
-          const diff = (now - lastReport) / 1000;
-          if (diff > 300) return 'badge-danger'; // 5分钟无上报
+          if (node._loading) return 'badge-warning';
+          if (node._error) return 'badge-danger';
           if (node.status?.pool?.exhausted) return 'badge-warning';
           return 'badge-success';
         }
 
         // 获取状态文本
         function getStatusText(node) {
-          if (!node.last_report_at) return '未连接';
-          const lastReport = new Date(node.last_report_at);
-          const now = new Date();
-          const diff = (now - lastReport) / 1000;
-          if (diff > 300) return '离线';
+          if (node._loading) return '连接中...';
+          if (node._error) return '连接失败';
           if (node.status?.pool?.exhausted) return 'IP 耗尽';
           if (node.status?.running) return '运行中';
-          return '已停止';
+          return '已连接';
+        }
+
+        // 首页升级 Agent
+        async function upgradeNodeAgent(node) {
+          if (!confirm(`确定升级 ${node.name} 的 Agent？`)) return;
+
+          // 找到节点索引并设置升级状态
+          const index = nodes.value.findIndex(n => n.id === node.id);
+          if (index !== -1) {
+            nodes.value[index] = { ...nodes.value[index], _upgrading: true };
+          }
+
+          try {
+            const result = await api('POST', `/nodes/${node.id}/upgrade`);
+            if (result.error) {
+              alert('升级失败: ' + result.error);
+            } else {
+              alert('升级成功！Agent 正在重启...');
+            }
+          } catch (e) {
+            alert('升级失败: ' + e.message);
+          } finally {
+            if (index !== -1) {
+              nodes.value[index] = { ...nodes.value[index], _upgrading: false };
+            }
+          }
         }
 
         onMounted(async () => {
@@ -993,7 +1025,7 @@
           showAddIP, newIP,
           agentConfig, agentConfigError, savingAgentConfig, agentConfigSaved, upgradingAgent, agentVersion,
           showAddReporter, newReporter,
-          loadNodes, loadLogs, addNode, deleteNodeConfirm,
+          loadNodes, loadLogs, addNode, deleteNodeConfirm, upgradeNodeAgent,
           showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,
           addIP, removeAvailableIP, restoreDiscardedIP, removeDiscardedIP,
           loadAgentConfig, saveAgentConfig, upgradeAgent,
