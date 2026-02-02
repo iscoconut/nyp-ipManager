@@ -247,7 +247,17 @@ async function handleRequest(req, res) {
       // 延迟执行升级，确保响应已发送
       setTimeout(async () => {
         try {
+          const tempDir = `/tmp/nyp-agent-upgrade-${Date.now()}`;
+          const repoUrl = 'https://github.com/iscoconut/nyp-ipManager.git';
           const upgradeScript = '/opt/nyp-agent/upgrade.sh';
+
+          // 先下载最新的 upgrade.sh，防止旧脚本损坏
+          console.log('[API] Downloading latest upgrade script...');
+          await execAsync(`rm -rf ${tempDir} && git clone --depth 1 ${repoUrl} ${tempDir}`, { timeout: 60000 });
+          await execAsync(`cp ${tempDir}/nyp-agent/upgrade.sh ${upgradeScript} && chmod +x ${upgradeScript}`, { timeout: 5000 });
+          await execAsync(`rm -rf ${tempDir}`, { timeout: 5000 });
+
+          // 执行更新后的升级脚本
           console.log(`[API] Executing upgrade script: ${upgradeScript}`);
           await execAsync(`bash ${upgradeScript}`, { timeout: 120000 });
         } catch (error) {
