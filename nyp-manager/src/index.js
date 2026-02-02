@@ -662,7 +662,16 @@ async function handleAPI(req, res, pathname, method, url) {
       // 延迟执行升级，确保响应已发送
       setTimeout(async () => {
         try {
-          const upgradeScript = '/opt/nyp-manager/upgrade.sh';
+          // 尝试多个可能的脚本路径
+          const possiblePaths = [
+            path.join(__dirname, '../upgrade.sh'),
+            '/opt/nyp-manager/upgrade.sh'
+          ];
+          let upgradeScript = possiblePaths.find(p => fs.existsSync(p));
+          if (!upgradeScript) {
+            console.error('[API] Upgrade script not found');
+            return;
+          }
           console.log(`[API] Executing upgrade script: ${upgradeScript}`);
           await execAsync(`bash ${upgradeScript}`, { timeout: 120000 });
         } catch (error) {

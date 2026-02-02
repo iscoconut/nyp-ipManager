@@ -153,7 +153,7 @@
                   <strong>{{ node.name }}</strong>
                   <br><small style="color: #666;">{{ node.id }}</small>
                 </td>
-                <td>{{ node.status?.current_ip || '-' }}</td>
+                <td>{{ node.status?.current_ip?.ip || '-' }}</td>
                 <td>
                   <span class="badge" :class="getStatusClass(node)">
                     {{ getStatusText(node) }}
@@ -293,14 +293,15 @@
 
           <!-- Agent Config Tab -->
           <div v-if="detailTab === 'agentConfig'">
-            <div v-if="agentConfig">
-              <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
-                <span>Agent 版本: <strong>{{ agentVersion ? 'v' + agentVersion : '未知' }}</strong></span>
-                <button class="btn btn-sm btn-success" @click="upgradeAgent" :disabled="upgradingAgent">
-                  {{ upgradingAgent ? '升级中...' : '升级 Agent' }}
-                </button>
-              </div>
+            <!-- 版本和升级（始终显示） -->
+            <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+              <span>Agent 版本: <strong>{{ agentVersion ? 'v' + agentVersion : '未知' }}</strong></span>
+              <button class="btn btn-sm btn-success" @click="upgradeAgent" :disabled="upgradingAgent">
+                {{ upgradingAgent ? '升级中...' : '升级 Agent' }}
+              </button>
+            </div>
 
+            <div v-if="agentConfig">
               <h4 style="margin: 15px 0 10px;">网络配置</h4>
               <div class="form-group">
                 <label>网卡接口</label>
@@ -657,21 +658,23 @@
             const nodeList = await api('GET', '/nodes');
             nodes.value = nodeList;
 
-            // 异步获取每个节点的实时状态（不阻塞）
-            nodeList.forEach(async (node, index) => {
-              try {
-                const status = await api('GET', `/nodes/${node.id}/status`);
-                if (!status.error) {
-                  // 更新节点状态
-                  nodes.value[index] = {
-                    ...nodes.value[index],
-                    status: status,
-                    last_report_at: new Date().toISOString()
-                  };
-                }
-              } catch (e) {
-                // 获取失败，保持原状态
+            // 并行获取所有节点的实时状态
+            const statusPromises = nodeList.map(node =>
+              api('GET', `/nodes/${node.id}/status`).catch(() => null)
+            );
+            const statuses = await Promise.all(statusPromises);
+
+            // 批量更新状态（触发 Vue 响应式）
+            nodes.value = nodeList.map((node, index) => {
+              const status = statuses[index];
+              if (status && !status.error) {
+                return {
+                  ...node,
+                  status: status,
+                  last_report_at: new Date().toISOString()
+                };
               }
+              return node;
             });
           } catch (e) {
             console.error('加载节点失败', e);
