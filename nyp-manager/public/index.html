@@ -294,8 +294,8 @@
           <!-- Agent Config Tab -->
           <div v-if="detailTab === 'agentConfig'">
             <div v-if="agentConfig">
-              <div v-if="agentVersion" style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
-                <span>Agent 版本: <strong>v{{ agentVersion }}</strong></span>
+              <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <span>Agent 版本: <strong>{{ agentVersion ? 'v' + agentVersion : '未知' }}</strong></span>
                 <button class="btn btn-sm btn-success" @click="upgradeAgent" :disabled="upgradingAgent">
                   {{ upgradingAgent ? '升级中...' : '升级 Agent' }}
                 </button>
@@ -654,7 +654,25 @@
         // 加载节点列表
         async function loadNodes() {
           try {
-            nodes.value = await api('GET', '/nodes');
+            const nodeList = await api('GET', '/nodes');
+            nodes.value = nodeList;
+
+            // 异步获取每个节点的实时状态（不阻塞）
+            nodeList.forEach(async (node, index) => {
+              try {
+                const status = await api('GET', `/nodes/${node.id}/status`);
+                if (!status.error) {
+                  // 更新节点状态
+                  nodes.value[index] = {
+                    ...nodes.value[index],
+                    status: status,
+                    last_report_at: new Date().toISOString()
+                  };
+                }
+              } catch (e) {
+                // 获取失败，保持原状态
+              }
+            });
           } catch (e) {
             console.error('加载节点失败', e);
           }

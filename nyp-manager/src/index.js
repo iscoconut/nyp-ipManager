@@ -458,6 +458,29 @@ async function handleAPI(req, res, pathname, method, url) {
       }
     }
 
+    // GET /api/nodes/:id/status - 从 Agent 获取实时状态
+    if (method === 'GET' && pathname.match(/^\/api\/nodes\/[^/]+\/status$/)) {
+      const nodeId = pathname.split('/')[3];
+      const node = getNode(nodeId);
+      if (!node) {
+        return jsonResponse(res, { error: 'Node not found' }, 404);
+      }
+
+      try {
+        const agentUrl = `${node.url}/status`;
+        const headers = {};
+        if (node.token) {
+          headers['Authorization'] = `Bearer ${node.token}`;
+        }
+
+        const response = await fetch(agentUrl, { headers, signal: AbortSignal.timeout(5000) });
+        const result = await response.json();
+        return jsonResponse(res, result, response.ok ? 200 : 400);
+      } catch (error) {
+        return jsonResponse(res, { error: `Failed to contact agent: ${error.message}` }, 500);
+      }
+    }
+
     // ---------- Agent 配置管理 ----------
 
     // GET /api/nodes/:id/agent-config - 获取 Agent 配置
