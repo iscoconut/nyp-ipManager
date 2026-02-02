@@ -673,7 +673,8 @@ async function handleAPI(req, res, pathname, method, url) {
             return;
           }
           console.log(`[API] Executing upgrade script: ${upgradeScript}`);
-          await execAsync(`bash ${upgradeScript}`, { timeout: 120000 });
+          // 使用 sudo 执行（需要配置免密 sudo）
+          await execAsync(`sudo bash ${upgradeScript}`, { timeout: 120000 });
         } catch (error) {
           console.error(`[API] Upgrade error: ${error.message}`);
         }
