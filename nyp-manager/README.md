@@ -37,23 +37,31 @@ chmod +x install.sh
 ./install.sh
 ```
 
-### 3. 配置 Token（推荐）
+### 3. 配置（可选）
+
+安装脚本会自动生成随机 Token，配置文件位于：
 
 ```bash
-nano /etc/systemd/system/nyp-manager.service
+nano /opt/nyp-manager/config/.env
 ```
 
-取消注释并修改 `API_TOKEN`：
-
-```ini
-Environment=API_TOKEN=your-secret-token
-```
-
-重新加载服务配置：
+配置内容：
 
 ```bash
-systemctl daemon-reload
+# API 监听端口
+API_PORT=3001
+
+# API 监听地址
+API_HOST=0.0.0.0
+
+# 管理员认证 Token
+API_TOKEN=your-secret-token
+
+# SQLite 数据库路径
+DB_PATH=/opt/nyp-manager/data/manager.db
 ```
+
+修改后重启服务生效。
 
 ### 4. 启动服务
 
@@ -74,6 +82,20 @@ journalctl -u nyp-manager -f
 
 如果设置了 Token，访问时需要带上 Token：`http://YOUR_SERVER_IP:3001?token=your-secret-token`
 
+## 升级
+
+```bash
+/opt/nyp-manager/upgrade.sh
+```
+
+升级脚本会自动：
+- 下载最新代码
+- 备份当前版本
+- 更新文件（保留配置和数据）
+- 重启服务
+
+如需回滚，按提示操作即可。
+
 ## 手动安装
 
 ```bash
@@ -84,7 +106,9 @@ npm start
 
 ## 配置
 
-通过环境变量配置：
+配置文件位置：`/opt/nyp-manager/config/.env`
+
+环境变量说明：
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
@@ -207,6 +231,8 @@ Manager 根据配置自动上报到 nyanpass/阿里云等
 ├── data/
 │   └── manager.db        # SQLite 数据库
 ├── config/
+│   └── .env              # 环境变量配置
+├── upgrade.sh            # 升级脚本
 └── package.json
 ```
 

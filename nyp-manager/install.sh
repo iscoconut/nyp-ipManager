@@ -20,7 +20,7 @@ fi
 
 # 安装依赖
 echo ""
-echo "[1/5] 检查并安装依赖..."
+echo "[1/6] 检查并安装依赖..."
 
 # 安装 curl 和 git
 if ! command -v curl &> /dev/null; then
@@ -54,34 +54,64 @@ echo "  npm 版本: $(npm -v)"
 
 # 创建安装目录
 echo ""
-echo "[2/5] 创建安装目录..."
+echo "[2/6] 创建安装目录..."
 mkdir -p $INSTALL_DIR
+mkdir -p $INSTALL_DIR/config
+mkdir -p $INSTALL_DIR/data
 
 # 复制文件
 echo ""
-echo "[3/5] 复制文件..."
+echo "[3/6] 复制文件..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cp -r "$SCRIPT_DIR/src" $INSTALL_DIR/
 cp -r "$SCRIPT_DIR/public" $INSTALL_DIR/
 cp "$SCRIPT_DIR/package.json" $INSTALL_DIR/
-mkdir -p $INSTALL_DIR/config
-mkdir -p $INSTALL_DIR/data
 
-# 如果存在配置示例，复制它
-if [ -f "$SCRIPT_DIR/config/config.example.json" ]; then
-  cp "$SCRIPT_DIR/config/config.example.json" $INSTALL_DIR/config/
+# 复制升级脚本
+if [ -f "$SCRIPT_DIR/upgrade.sh" ]; then
+  cp "$SCRIPT_DIR/upgrade.sh" $INSTALL_DIR/
+  chmod +x $INSTALL_DIR/upgrade.sh
+fi
+
+# 创建 .env 文件（如果不存在）
+echo ""
+echo "[4/6] 配置环境变量..."
+if [ ! -f "$INSTALL_DIR/config/.env" ]; then
+  # 生成随机 Token
+  RANDOM_TOKEN=$(openssl rand -hex 16 2>/dev/null || head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)
+
+  cat > $INSTALL_DIR/config/.env << EOF
+# nyp-manager 环境变量配置
+
+# API 监听端口
+API_PORT=3001
+
+# API 监听地址
+API_HOST=0.0.0.0
+
+# 管理员认证 Token（请修改为自己的密钥）
+API_TOKEN=$RANDOM_TOKEN
+
+# SQLite 数据库路径
+DB_PATH=/opt/nyp-manager/data/manager.db
+EOF
+
+  echo "  已生成 .env 配置文件: $INSTALL_DIR/config/.env"
+  echo "  自动生成的 Token: $RANDOM_TOKEN"
+else
+  echo "  .env 配置文件已存在，跳过"
 fi
 
 # 安装 npm 依赖
 echo ""
-echo "[4/5] 安装 npm 依赖..."
+echo "[5/6] 安装 npm 依赖..."
 cd $INSTALL_DIR
 npm install --production
 
 # 安装 systemd 服务
 echo ""
-echo "[5/5] 安装 systemd 服务..."
-cat > /etc/systemd/system/$SERVICE_NAME.service << 'EOF'
+echo "[6/6] 安装 systemd 服务..."
+cat > /etc/systemd/system/$SERVICE_NAME.service << EOF
 [Unit]
 Description=nyp-manager - nyanpass IP Manager Central Panel
 After=network.target
@@ -89,18 +119,10 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/nyp-manager
+EnvironmentFile=/opt/nyp-manager/config/.env
 ExecStart=/usr/bin/node src/index.js
 Restart=always
 RestartSec=10
-Environment=NODE_ENV=production
-
-# 取消下面的注释来启用 Token 认证
-# Environment=API_TOKEN=your-secret-token
-
-# 可选配置
-# Environment=API_PORT=3001
-# Environment=API_HOST=0.0.0.0
-# Environment=DB_PATH=/opt/nyp-manager/data/manager.db
 
 [Install]
 WantedBy=multi-user.target
@@ -113,11 +135,13 @@ echo "=========================================="
 echo "安装完成！"
 echo "=========================================="
 echo ""
+echo "配置文件位置: $INSTALL_DIR/config/.env"
+echo "当前 Token: $(grep API_TOKEN $INSTALL_DIR/config/.env | cut -d'=' -f2)"
+echo ""
 echo "下一步操作："
 echo ""
-echo "1. 编辑配置（可选）:"
-echo "   nano /etc/systemd/system/nyp-manager.service"
-echo "   # 设置 API_TOKEN 来启用认证"
+echo "1. 修改配置（可选）:"
+echo "   nano $INSTALL_DIR/config/.env"
 echo ""
 echo "2. 启动服务:"
 echo "   systemctl start $SERVICE_NAME"
@@ -129,5 +153,8 @@ echo "4. 查看日志:"
 echo "   journalctl -u $SERVICE_NAME -f"
 echo ""
 echo "5. 访问管理界面:"
-echo "   http://YOUR_SERVER_IP:3001"
+echo "   http://YOUR_SERVER_IP:3001?token=YOUR_TOKEN"
+echo ""
+echo "升级方式:"
+echo "   $INSTALL_DIR/upgrade.sh"
 echo ""
