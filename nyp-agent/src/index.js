@@ -3,16 +3,19 @@ import { URL } from 'url';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Switcher } from './switcher.js';
+import { Reporter } from './reporter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 配置文件路径
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(__dirname, '../config/config.json');
 const API_PORT = parseInt(process.env.API_PORT || '3000', 10);
-const API_TOKEN = process.env.API_TOKEN || null;
+const API_HOST = process.env.API_HOST || '0.0.0.0';
 
-// 全局 switcher 实例
+// 全局实例
 let switcher = null;
+let reporter = null;
+let apiToken = null;
 
 /**
  * 简单的 JSON 响应
@@ -44,13 +47,23 @@ async function parseBody(req) {
  * Token 验证
  */
 function checkAuth(req) {
-  if (!API_TOKEN) return true;
+  if (!apiToken) return true;
 
+  // 支持 Bearer token 和 query 参数
   const authHeader = req.headers['authorization'];
-  if (!authHeader) return false;
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const queryToken = url.searchParams.get('token');
 
-  const token = authHeader.replace('Bearer ', '');
-  return token === API_TOKEN;
+  if (authHeader) {
+    const token = authHeader.replace('Bearer ', '');
+    return token === apiToken;
+  }
+
+  if (queryToken) {
+    return queryToken === apiToken;
+  }
+
+  return false;
 }
 
 /**
@@ -63,7 +76,7 @@ async function handleRequest(req, res) {
 
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (method === 'OPTIONS') {
@@ -132,10 +145,15 @@ async function handleRequest(req, res) {
     // POST /pool/add - 添加 IP 到可用池
     if (method === 'POST' && pathname === '/pool/add') {
       const body = await parseBody(req);
-      if (!body.ip || !body.netmask || !body.gateway || !body.rule_from) {
+      if (!body.ip || body.netmask === undefined || !body.gateway || !body.rule_from) {
         return jsonResponse(res, { error: 'Missing required fields: ip, netmask, gateway, rule_from' }, 400);
       }
-      await switcher.ipPool.addAvailable(body);
+      await switcher.ipPool.addAvailable({
+        ip: body.ip,
+        netmask: body.netmask,
+        gateway: body.gateway,
+        rule_from: body.rule_from
+      });
       return jsonResponse(res, { message: 'IP added to available pool', ip: body.ip });
     }
 
@@ -147,6 +165,55 @@ async function handleRequest(req, res) {
       }
       const restored = await switcher.ipPool.restoreFromDiscarded(body.ip);
       return jsonResponse(res, { message: 'IP restored to available pool', ip: restored.ip });
+    }
+
+    // DELETE /pool/available/:ip - 从可用池删除 IP
+    if (method === 'DELETE' && pathname.startsWith('/pool/available/')) {
+      const ip = decodeURIComponent(pathname.split('/pool/available/')[1]);
+      if (!ip) {
+        return jsonResponse(res, { error: 'Missing IP in URL' }, 400);
+      }
+      const removed = await switcher.ipPool.removeFromAvailable(ip);
+      if (removed) {
+        return jsonResponse(res, { message: 'IP removed from available pool', ip });
+      } else {
+        return jsonResponse(res, { error: 'IP not found in available pool' }, 404);
+      }
+    }
+
+    // DELETE /pool/discarded/:ip - 从废弃池删除 IP
+    if (method === 'DELETE' && pathname.startsWith('/pool/discarded/')) {
+      const ip = decodeURIComponent(pathname.split('/pool/discarded/')[1]);
+      if (!ip) {
+        return jsonResponse(res, { error: 'Missing IP in URL' }, 400);
+      }
+      const removed = await switcher.ipPool.removeFromDiscarded(ip);
+      if (removed) {
+        return jsonResponse(res, { message: 'IP removed from discarded pool', ip });
+      } else {
+        return jsonResponse(res, { error: 'IP not found in discarded pool' }, 404);
+      }
+    }
+
+    // PUT /pool/current - 更新当前 IP 配置（不执行网络切换）
+    if (method === 'PUT' && pathname === '/pool/current') {
+      const body = await parseBody(req);
+      if (!body.ip || body.netmask === undefined || !body.gateway || !body.rule_from) {
+        return jsonResponse(res, { error: 'Missing required fields: ip, netmask, gateway, rule_from' }, 400);
+      }
+      await switcher.ipPool.updateCurrent({
+        ip: body.ip,
+        netmask: body.netmask,
+        gateway: body.gateway,
+        rule_from: body.rule_from
+      });
+      return jsonResponse(res, { message: 'Current IP config updated', ip: body.ip });
+    }
+
+    // DELETE /pool/discarded - 清空废弃池
+    if (method === 'DELETE' && pathname === '/pool/discarded') {
+      const count = await switcher.ipPool.clearDiscarded();
+      return jsonResponse(res, { message: `Cleared ${count} IPs from discarded pool` });
     }
 
     // 404
@@ -166,31 +233,48 @@ async function main() {
   console.log('nyp-agent - IP Failover Agent');
   console.log('='.repeat(50));
   console.log(`Config path: ${CONFIG_PATH}`);
-  console.log(`API port: ${API_PORT}`);
-  console.log(`Auth: ${API_TOKEN ? 'enabled' : 'disabled'}`);
+  console.log(`API listen: ${API_HOST}:${API_PORT}`);
   console.log('='.repeat(50));
 
   // 初始化 Switcher
   switcher = new Switcher(CONFIG_PATH);
   await switcher.init();
 
+  // 从配置文件读取 token（环境变量优先）
+  const config = switcher.ipPool.config;
+  apiToken = process.env.API_TOKEN || config.api_token || null;
+  console.log(`Auth: ${apiToken ? 'enabled' : 'disabled'}`);
+
+  // 初始化 Reporter
+  reporter = new Reporter(config.manager);
+  reporter.setStatusGetter(() => switcher.getStatus());
+
+  // 设置 Switcher 的回调
+  switcher.setOnSwitch(async (oldIp, newIp, success, message) => {
+    await reporter.reportSwitch(oldIp, newIp, success, message);
+  });
+
   // 启动 HTTP 服务
   const server = http.createServer(handleRequest);
 
-  server.listen(API_PORT, () => {
-    console.log(`[API] Server listening on port ${API_PORT}`);
+  server.listen(API_PORT, API_HOST, () => {
+    console.log(`[API] Server listening on ${API_HOST}:${API_PORT}`);
     console.log('');
     console.log('Available endpoints:');
-    console.log('  GET  /health       - Health check');
-    console.log('  GET  /status       - Get current status');
-    console.log('  GET  /config       - Get full configuration');
-    console.log('  GET  /pool         - Get IP pool details');
-    console.log('  POST /switch       - Manual IP switch');
-    console.log('  POST /start        - Start auto-detection');
-    console.log('  POST /stop         - Stop auto-detection');
-    console.log('  POST /reload       - Reload configuration');
-    console.log('  POST /pool/add     - Add IP to pool');
-    console.log('  POST /pool/restore - Restore IP from discarded');
+    console.log('  GET    /health              - Health check');
+    console.log('  GET    /status              - Get current status');
+    console.log('  GET    /config              - Get full configuration');
+    console.log('  GET    /pool                - Get IP pool details');
+    console.log('  POST   /switch              - Manual IP switch');
+    console.log('  POST   /start               - Start auto-detection');
+    console.log('  POST   /stop                - Stop auto-detection');
+    console.log('  POST   /reload              - Reload configuration');
+    console.log('  POST   /pool/add            - Add IP to available pool');
+    console.log('  POST   /pool/restore        - Restore IP from discarded');
+    console.log('  PUT    /pool/current        - Update current IP config');
+    console.log('  DELETE /pool/available/:ip  - Remove IP from available');
+    console.log('  DELETE /pool/discarded/:ip  - Remove IP from discarded');
+    console.log('  DELETE /pool/discarded      - Clear discarded pool');
     console.log('');
   });
 
@@ -201,10 +285,14 @@ async function main() {
     switcher.start();
   }
 
+  // 启动 Reporter
+  reporter.start();
+
   // 优雅关闭
   process.on('SIGINT', () => {
     console.log('\n[Agent] Shutting down...');
     switcher.stop();
+    reporter.stop();
     server.close(() => {
       console.log('[Agent] Goodbye!');
       process.exit(0);
@@ -214,6 +302,7 @@ async function main() {
   process.on('SIGTERM', () => {
     console.log('\n[Agent] Shutting down...');
     switcher.stop();
+    reporter.stop();
     server.close(() => {
       process.exit(0);
     });

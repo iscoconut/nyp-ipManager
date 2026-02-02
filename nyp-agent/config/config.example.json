@@ -12,6 +12,15 @@
   "curl_target_2": "https://223.5.5.5/dns-query",
   "curl_timeout": 3,
 
+  "api_token": "your-secret-token",
+
+  "manager": {
+    "url": "http://your-manager-server:3001",
+    "token": "manager-auth-token",
+    "node_id": "node-1",
+    "report_interval": 60000
+  },
+
   "current": {
     "ip": "10.0.0.100",
     "netmask": 24,

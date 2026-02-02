@@ -30,6 +30,16 @@ export class Switcher {
       last_switch: null,
       last_check_result: null
     };
+
+    // 回调函数
+    this.onSwitch = null;
+  }
+
+  /**
+   * 设置 IP 切换回调
+   */
+  setOnSwitch(callback) {
+    this.onSwitch = callback;
   }
 
   /**
@@ -157,6 +167,15 @@ export class Switcher {
 
         console.log(`[Switcher] Switch successful: ${oldIp?.ip} -> ${newIpConfig.ip}`);
 
+        // 调用回调
+        if (this.onSwitch) {
+          try {
+            await this.onSwitch(oldIp?.ip, newIpConfig.ip, true, 'IP switched successfully');
+          } catch (e) {
+            console.error(`[Switcher] onSwitch callback error: ${e.message}`);
+          }
+        }
+
         return {
           success: true,
           message: 'IP switched successfully',
@@ -166,6 +185,16 @@ export class Switcher {
         };
       } else {
         console.error(`[Switcher] Network switch failed: ${netResult.message}`);
+
+        // 调用回调（失败）
+        if (this.onSwitch) {
+          try {
+            await this.onSwitch(oldIp?.ip, newIpConfig.ip, false, netResult.message);
+          } catch (e) {
+            console.error(`[Switcher] onSwitch callback error: ${e.message}`);
+          }
+        }
+
         return {
           success: false,
           message: netResult.message,

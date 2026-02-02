@@ -137,6 +137,40 @@ export class IPPool {
   }
 
   /**
+   * 从可用池删除 IP
+   */
+  async removeFromAvailable(ip) {
+    const index = this.config.available.findIndex(item => item.ip === ip);
+    if (index === -1) {
+      return false;
+    }
+    this.config.available.splice(index, 1);
+    await this.save();
+    return true;
+  }
+
+  /**
+   * 从废弃池删除 IP
+   */
+  async removeFromDiscarded(ip) {
+    const index = this.config.discarded.findIndex(item => item.ip === ip);
+    if (index === -1) {
+      return false;
+    }
+    this.config.discarded.splice(index, 1);
+    await this.save();
+    return true;
+  }
+
+  /**
+   * 更新当前 IP 配置（不执行网络切换）
+   */
+  async updateCurrent(ipConfig) {
+    this.config.current = ipConfig;
+    await this.save();
+  }
+
+  /**
    * 获取完整状态
    */
   getStatus() {

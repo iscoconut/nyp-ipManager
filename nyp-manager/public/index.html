@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NYP Manager - IP 故障转移管理面板</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    h1 { margin-bottom: 20px; color: #1a1a1a; }
+    h2 { font-size: 1.2rem; margin-bottom: 15px; color: #333; }
+
+    /* Cards */
+    .card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
+
+    /* Buttons */
+    .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+    .btn-primary { background: #007bff; color: white; }
+    .btn-primary:hover { background: #0056b3; }
+    .btn-success { background: #28a745; color: white; }
+    .btn-success:hover { background: #1e7e34; }
+    .btn-danger { background: #dc3545; color: white; }
+    .btn-danger:hover { background: #c82333; }
+    .btn-sm { padding: 4px 8px; font-size: 12px; }
+
+    /* Forms */
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+    .form-group input, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+    .form-group input:focus { outline: none; border-color: #007bff; }
+    .form-inline { display: flex; gap: 10px; align-items: center; }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #f8f9fa; font-weight: 600; }
+    tr:hover { background: #f8f9fa; }
+
+    /* Status badges */
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+    .badge-success { background: #d4edda; color: #155724; }
+    .badge-danger { background: #f8d7da; color: #721c24; }
+    .badge-warning { background: #fff3cd; color: #856404; }
+    .badge-info { background: #d1ecf1; color: #0c5460; }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 2px solid #eee; margin-bottom: 20px; }
+    .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+    .tab:hover { background: #f8f9fa; }
+    .tab.active { border-bottom-color: #007bff; color: #007bff; font-weight: 500; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal { background: white; border-radius: 8px; padding: 20px; width: 500px; max-width: 90%; max-height: 80vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .modal-header h3 { font-size: 1.1rem; }
+    .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #666; }
+    .modal-footer { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
+
+    /* IP Pool */
+    .ip-list { margin-top: 10px; }
+    .ip-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #f8f9fa; border-radius: 4px; margin-bottom: 8px; }
+    .ip-item.current { background: #d4edda; }
+    .ip-item.discarded { background: #f8d7da; }
+
+    /* Logs */
+    .log-item { padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
+    .log-item .time { color: #666; margin-right: 10px; }
+    .log-item .action { font-weight: 500; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .form-inline { flex-direction: column; align-items: stretch; }
+      .modal { width: 95%; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <h1>NYP Manager</h1>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <div class="tab" :class="{ active: currentTab === 'nodes' }" @click="currentTab = 'nodes'">节点管理</div>
+        <div class="tab" :class="{ active: currentTab === 'logs' }" @click="currentTab = 'logs'; loadLogs()">操作日志</div>
+      </div>
+
+      <!-- Nodes Tab -->
+      <div v-if="currentTab === 'nodes'">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h2>节点列表</h2>
+            <button class="btn btn-primary" @click="showAddNode = true">添加节点</button>
+          </div>
+
+          <table v-if="nodes.length">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>当前 IP</th>
+                <th>状态</th>
+                <th>IP 池</th>
+                <th>最后上报</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="node in nodes" :key="node.id">
+                <td>
+                  <strong>{{ node.name }}</strong>
+                  <br><small style="color: #666;">{{ node.id }}</small>
+                </td>
+                <td>{{ node.status?.current_ip || '-' }}</td>
+                <td>
+                  <span class="badge" :class="getStatusClass(node)">
+                    {{ getStatusText(node) }}
+                  </span>
+                </td>
+                <td>
+                  <span class="badge badge-info">可用: {{ node.status?.pool?.available || 0 }}</span>
+                  <span class="badge badge-warning" v-if="node.status?.pool?.discarded">废弃: {{ node.status.pool.discarded }}</span>
+                </td>
+                <td>{{ formatTime(node.last_report_at) }}</td>
+                <td>
+                  <button class="btn btn-sm btn-success" @click="switchIP(node)" :disabled="switching[node.id]">
+                    {{ switching[node.id] ? '切换中...' : '换 IP' }}
+                  </button>
+                  <button class="btn btn-sm btn-primary" @click="showNodeDetail(node)">详情</button>
+                  <button class="btn btn-sm btn-danger" @click="deleteNodeConfirm(node)">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-else style="color: #666; text-align: center; padding: 40px;">暂无节点，点击上方按钮添加</p>
+        </div>
+      </div>
+
+      <!-- Logs Tab -->
+      <div v-if="currentTab === 'logs'">
+        <div class="card">
+          <h2>操作日志</h2>
+          <div class="form-inline" style="margin-bottom: 15px;">
+            <select v-model="logFilter.nodeId" @change="loadLogs" style="width: 200px;">
+              <option value="">全部节点</option>
+              <option v-for="node in nodes" :key="node.id" :value="node.id">{{ node.name }}</option>
+            </select>
+            <button class="btn btn-primary btn-sm" @click="loadLogs">刷新</button>
+          </div>
+
+          <div v-if="logs.length">
+            <div class="log-item" v-for="log in logs" :key="log.id">
+              <span class="time">{{ formatTime(log.created_at) }}</span>
+              <span class="action">{{ log.action }}</span>
+              <span v-if="log.old_ip || log.new_ip">
+                : {{ log.old_ip || '?' }} → {{ log.new_ip || '?' }}
+              </span>
+              <span class="badge" :class="log.result === 'success' ? 'badge-success' : 'badge-danger'" style="margin-left: 10px;">
+                {{ log.result }}
+              </span>
+              <span v-if="log.message" style="color: #666; margin-left: 10px;">{{ log.message }}</span>
+            </div>
+          </div>
+          <p v-else style="color: #666; text-align: center; padding: 40px;">暂无日志</p>
+        </div>
+      </div>
+
+      <!-- Add Node Modal -->
+      <div class="modal-overlay" v-if="showAddNode" @click.self="showAddNode = false">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>添加节点</h3>
+            <button class="modal-close" @click="showAddNode = false">&times;</button>
+          </div>
+          <div class="form-group">
+            <label>节点 ID</label>
+            <input v-model="newNode.id" placeholder="唯一标识，如 node-1">
+          </div>
+          <div class="form-group">
+            <label>节点名称</label>
+            <input v-model="newNode.name" placeholder="如：广州电信 IEPL">
+          </div>
+          <div class="form-group">
+            <label>Agent URL</label>
+            <input v-model="newNode.url" placeholder="如：http://192.168.1.100:3000">
+          </div>
+          <div class="form-group">
+            <label>Agent Token (可选)</label>
+            <input v-model="newNode.token" placeholder="Agent 的 api_token">
+          </div>
+          <div class="modal-footer">
+            <button class="btn" @click="showAddNode = false">取消</button>
+            <button class="btn btn-primary" @click="addNode">添加</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Node Detail Modal -->
+      <div class="modal-overlay" v-if="selectedNode" @click.self="selectedNode = null">
+        <div class="modal" style="width: 700px;">
+          <div class="modal-header">
+            <h3>{{ selectedNode.name }}</h3>
+            <button class="modal-close" @click="selectedNode = null">&times;</button>
+          </div>
+
+          <div class="tabs" style="margin-top: 10px;">
+            <div class="tab" :class="{ active: detailTab === 'pool' }" @click="detailTab = 'pool'; loadNodePool()">IP 池</div>
+            <div class="tab" :class="{ active: detailTab === 'reporters' }" @click="detailTab = 'reporters'; loadNodeReporters()">上报配置</div>
+            <div class="tab" :class="{ active: detailTab === 'settings' }" @click="detailTab = 'settings'">节点设置</div>
+          </div>
+
+          <!-- IP Pool Tab -->
+          <div v-if="detailTab === 'pool'">
+            <div v-if="nodePool">
+              <h4 style="margin: 15px 0 10px;">当前 IP</h4>
+              <div class="ip-item current">
+                <span>{{ nodePool.current?.ip }} / {{ nodePool.current?.netmask }}</span>
+                <span style="color: #666;">网关: {{ nodePool.current?.gateway }}</span>
+              </div>
+
+              <h4 style="margin: 15px 0 10px;">可用 IP ({{ nodePool.available?.length || 0 }})</h4>
+              <div class="ip-list">
+                <div class="ip-item" v-for="ip in nodePool.available" :key="ip.ip">
+                  <span>{{ ip.ip }} / {{ ip.netmask }}</span>
+                  <span style="color: #666;">网关: {{ ip.gateway }}</span>
+                </div>
+                <p v-if="!nodePool.available?.length" style="color: #666; padding: 10px;">无可用 IP</p>
+              </div>
+
+              <h4 style="margin: 15px 0 10px;">废弃 IP ({{ nodePool.discarded?.length || 0 }})</h4>
+              <div class="ip-list">
+                <div class="ip-item discarded" v-for="ip in nodePool.discarded" :key="ip.ip">
+                  <span>{{ ip.ip }} / {{ ip.netmask }}</span>
+                  <span style="color: #666;">{{ formatTime(ip.discarded_at) }}</span>
+                </div>
+                <p v-if="!nodePool.discarded?.length" style="color: #666; padding: 10px;">无废弃 IP</p>
+              </div>
+            </div>
+            <p v-else style="color: #666; text-align: center; padding: 20px;">加载中...</p>
+          </div>
+
+          <!-- Reporters Tab -->
+          <div v-if="detailTab === 'reporters'">
+            <div style="margin-bottom: 15px;">
+              <button class="btn btn-primary btn-sm" @click="showAddReporter = true">添加上报目标</button>
+            </div>
+
+            <div v-if="nodeReporters.length">
+              <div class="card" v-for="reporter in nodeReporters" :key="reporter.id" style="margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <strong>{{ reporter.type }}</strong>
+                    <span class="badge" :class="reporter.enabled ? 'badge-success' : 'badge-danger'" style="margin-left: 10px;">
+                      {{ reporter.enabled ? '启用' : '禁用' }}
+                    </span>
+                  </div>
+                  <div>
+                    <button class="btn btn-sm" @click="toggleReporter(reporter)">
+                      {{ reporter.enabled ? '禁用' : '启用' }}
+                    </button>
+                    <button class="btn btn-sm btn-danger" @click="deleteReporter(reporter)">删除</button>
+                  </div>
+                </div>
+                <div style="margin-top: 10px; font-size: 13px; color: #666;">
+                  <div v-if="reporter.type === 'nyanpass'">
+                    面板: {{ reporter.config.admin_url }}<br>
+                    设备组 ID: {{ reporter.config.device_group_id }}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p v-else style="color: #666; text-align: center; padding: 20px;">暂无上报配置</p>
+          </div>
+
+          <!-- Settings Tab -->
+          <div v-if="detailTab === 'settings'">
+            <div class="form-group">
+              <label>节点名称</label>
+              <input v-model="selectedNode.name">
+            </div>
+            <div class="form-group">
+              <label>Agent URL</label>
+              <input v-model="selectedNode.url">
+            </div>
+            <div class="form-group">
+              <label>Agent Token</label>
+              <input v-model="selectedNode.token" placeholder="留空则不验证">
+            </div>
+            <button class="btn btn-primary" @click="updateNodeSettings">保存</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Reporter Modal -->
+      <div class="modal-overlay" v-if="showAddReporter" @click.self="showAddReporter = false">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>添加上报目标</h3>
+            <button class="modal-close" @click="showAddReporter = false">&times;</button>
+          </div>
+          <div class="form-group">
+            <label>类型</label>
+            <select v-model="newReporter.type">
+              <option value="nyanpass">Nyanpass</option>
+              <option value="aliyun" disabled>阿里云 (待实现)</option>
+            </select>
+          </div>
+          <div v-if="newReporter.type === 'nyanpass'">
+            <div class="form-group">
+              <label>管理面板地址</label>
+              <input v-model="newReporter.config.admin_url" placeholder="如：https://nya.example.com">
+            </div>
+            <div class="form-group">
+              <label>用户名</label>
+              <input v-model="newReporter.config.username">
+            </div>
+            <div class="form-group">
+              <label>密码</label>
+              <input type="password" v-model="newReporter.config.password">
+            </div>
+            <div class="form-group">
+              <label>设备组 ID</label>
+              <input type="number" v-model="newReporter.config.device_group_id" placeholder="如：24">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn" @click="showAddReporter = false">取消</button>
+            <button class="btn btn-primary" @click="addReporter">添加</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, reactive, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const API_TOKEN = localStorage.getItem('api_token') || '';
+
+        const currentTab = ref('nodes');
+        const nodes = ref([]);
+        const logs = ref([]);
+        const logFilter = reactive({ nodeId: '' });
+        const switching = reactive({});
+
+        const showAddNode = ref(false);
+        const newNode = reactive({ id: '', name: '', url: '', token: '' });
+
+        const selectedNode = ref(null);
+        const detailTab = ref('pool');
+        const nodePool = ref(null);
+        const nodeReporters = ref([]);
+
+        const showAddReporter = ref(false);
+        const newReporter = reactive({
+          type: 'nyanpass',
+          config: { admin_url: '', username: '', password: '', device_group_id: '' }
+        });
+
+        // API 请求
+        async function api(method, path, body = null) {
+          const options = {
+            method,
+            headers: { 'Content-Type': 'application/json' }
+          };
+          if (API_TOKEN) {
+            options.headers['Authorization'] = `Bearer ${API_TOKEN}`;
+          }
+          if (body) {
+            options.body = JSON.stringify(body);
+          }
+          const response = await fetch(`/api${path}`, options);
+          return response.json();
+        }
+
+        // 加载节点列表
+        async function loadNodes() {
+          nodes.value = await api('GET', '/nodes');
+        }
+
+        // 加载日志
+        async function loadLogs() {
+          const params = new URLSearchParams();
+          if (logFilter.nodeId) params.set('node_id', logFilter.nodeId);
+          logs.value = await api('GET', `/logs?${params}`);
+        }
+
+        // 添加节点
+        async function addNode() {
+          await api('POST', '/nodes', newNode);
+          showAddNode.value = false;
+          Object.assign(newNode, { id: '', name: '', url: '', token: '' });
+          loadNodes();
+        }
+
+        // 删除节点
+        async function deleteNodeConfirm(node) {
+          if (confirm(`确定删除节点 "${node.name}"?`)) {
+            await api('DELETE', `/nodes/${node.id}`);
+            loadNodes();
+          }
+        }
+
+        // 切换 IP
+        async function switchIP(node) {
+          switching[node.id] = true;
+          try {
+            const result = await api('POST', `/nodes/${node.id}/switch`);
+            alert(result.message || (result.success ? '切换成功' : '切换失败'));
+            loadNodes();
+          } catch (e) {
+            alert('切换失败: ' + e.message);
+          } finally {
+            switching[node.id] = false;
+          }
+        }
+
+        // 显示节点详情
+        function showNodeDetail(node) {
+          selectedNode.value = { ...node };
+          detailTab.value = 'pool';
+          loadNodePool();
+          loadNodeReporters();
+        }
+
+        // 加载节点 IP 池
+        async function loadNodePool() {
+          if (!selectedNode.value) return;
+          nodePool.value = await api('GET', `/nodes/${selectedNode.value.id}/pool`);
+        }
+
+        // 加载节点上报配置
+        async function loadNodeReporters() {
+          if (!selectedNode.value) return;
+          nodeReporters.value = await api('GET', `/nodes/${selectedNode.value.id}/reporters`);
+        }
+
+        // 更新节点设置
+        async function updateNodeSettings() {
+          await api('PUT', `/nodes/${selectedNode.value.id}`, {
+            name: selectedNode.value.name,
+            url: selectedNode.value.url,
+            token: selectedNode.value.token
+          });
+          alert('保存成功');
+          loadNodes();
+        }
+
+        // 添加上报配置
+        async function addReporter() {
+          await api('POST', `/nodes/${selectedNode.value.id}/reporters`, {
+            type: newReporter.type,
+            config: newReporter.config
+          });
+          showAddReporter.value = false;
+          Object.assign(newReporter.config, { admin_url: '', username: '', password: '', device_group_id: '' });
+          loadNodeReporters();
+        }
+
+        // 切换上报配置启用状态
+        async function toggleReporter(reporter) {
+          await api('PUT', `/reporters/${reporter.id}`, { enabled: !reporter.enabled });
+          loadNodeReporters();
+        }
+
+        // 删除上报配置
+        async function deleteReporter(reporter) {
+          if (confirm('确定删除此上报配置?')) {
+            await api('DELETE', `/reporters/${reporter.id}`);
+            loadNodeReporters();
+          }
+        }
+
+        // 格式化时间
+        function formatTime(time) {
+          if (!time) return '-';
+          return new Date(time).toLocaleString('zh-CN');
+        }
+
+        // 获取状态样式
+        function getStatusClass(node) {
+          if (!node.last_report_at) return 'badge-warning';
+          const lastReport = new Date(node.last_report_at);
+          const now = new Date();
+          const diff = (now - lastReport) / 1000;
+          if (diff > 300) return 'badge-danger'; // 5分钟无上报
+          if (node.status?.pool?.exhausted) return 'badge-warning';
+          return 'badge-success';
+        }
+
+        // 获取状态文本
+        function getStatusText(node) {
+          if (!node.last_report_at) return '未连接';
+          const lastReport = new Date(node.last_report_at);
+          const now = new Date();
+          const diff = (now - lastReport) / 1000;
+          if (diff > 300) return '离线';
+          if (node.status?.pool?.exhausted) return 'IP 耗尽';
+          if (node.status?.running) return '运行中';
+          return '已停止';
+        }
+
+        onMounted(() => {
+          loadNodes();
+          // 定时刷新节点状态
+          setInterval(loadNodes, 30000);
+        });
+
+        return {
+          currentTab, nodes, logs, logFilter, switching,
+          showAddNode, newNode,
+          selectedNode, detailTab, nodePool, nodeReporters,
+          showAddReporter, newReporter,
+          loadNodes, loadLogs, addNode, deleteNodeConfirm, switchIP,
+          showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,
+          addReporter, toggleReporter, deleteReporter,
+          formatTime, getStatusClass, getStatusText
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
