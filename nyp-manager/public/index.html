@@ -673,11 +673,34 @@
         }
 
         // 加载节点列表（渐进式）
+        // 缓存节点状态
+        function getCachedNodes() {
+          try {
+            const cached = localStorage.getItem('nodes_cache');
+            return cached ? JSON.parse(cached) : null;
+          } catch { return null; }
+        }
+
+        function setCachedNodes(nodeData) {
+          try {
+            localStorage.setItem('nodes_cache', JSON.stringify(nodeData));
+          } catch {}
+        }
+
         async function loadNodes() {
           try {
             const nodeList = await api('GET', '/nodes');
-            // 先显示所有节点，标记为加载中
-            nodes.value = nodeList.map(node => ({ ...node, _loading: true }));
+
+            // 先尝试显示缓存的状态
+            const cached = getCachedNodes();
+            nodes.value = nodeList.map(node => {
+              const cachedNode = cached?.find(n => n.id === node.id);
+              if (cachedNode?.status) {
+                // 有缓存，显示缓存数据，标记为刷新中
+                return { ...node, status: cachedNode.status, _loading: true, _error: false };
+              }
+              return { ...node, _loading: true };
+            });
 
             // 并行获取状态，每个完成后立即更新
             nodeList.forEach(async (node, index) => {
@@ -691,6 +714,8 @@
                   } else {
                     nodes.value[idx] = { ...node, _loading: false, _error: true };
                   }
+                  // 更新缓存
+                  setCachedNodes(nodes.value.filter(n => n.status && !n._error));
                 }
               } catch (e) {
                 const idx = nodes.value.findIndex(n => n.id === node.id);
