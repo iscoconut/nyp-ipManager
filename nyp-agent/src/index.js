@@ -2,8 +2,12 @@ import http from 'http';
 import { URL } from 'url';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { Switcher } from './switcher.js';
 import { Reporter } from './reporter.js';
+
+const execAsync = promisify(exec);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -225,6 +229,27 @@ async function handleRequest(req, res) {
     if (method === 'DELETE' && pathname === '/pool/discarded') {
       const count = await switcher.ipPool.clearDiscarded();
       return jsonResponse(res, { message: `Cleared ${count} IPs from discarded pool` });
+    }
+
+    // POST /upgrade - 远程升级
+    if (method === 'POST' && pathname === '/upgrade') {
+      console.log('[API] Remote upgrade triggered');
+
+      // 发送响应后再执行升级
+      jsonResponse(res, { message: 'Upgrade started, agent will restart shortly' });
+
+      // 延迟执行升级，确保响应已发送
+      setTimeout(async () => {
+        try {
+          const upgradeScript = '/opt/nyp-agent/upgrade.sh';
+          console.log(`[API] Executing upgrade script: ${upgradeScript}`);
+          await execAsync(`bash ${upgradeScript}`, { timeout: 120000 });
+        } catch (error) {
+          console.error(`[API] Upgrade error: ${error.message}`);
+        }
+      }, 500);
+
+      return;
     }
 
     // 404

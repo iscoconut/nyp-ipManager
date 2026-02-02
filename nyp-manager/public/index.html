@@ -353,11 +353,16 @@
                 <input v-model="agentConfig.api_token" placeholder="Agent 的 API Token">
               </div>
 
-              <div style="margin-top: 20px;">
-                <button class="btn btn-primary" @click="saveAgentConfig" :disabled="savingAgentConfig">
-                  {{ savingAgentConfig ? '保存中...' : '保存配置' }}
+              <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <button class="btn btn-primary" @click="saveAgentConfig" :disabled="savingAgentConfig">
+                    {{ savingAgentConfig ? '保存中...' : '保存配置' }}
+                  </button>
+                  <span v-if="agentConfigSaved" style="color: #28a745; margin-left: 10px;">已保存</span>
+                </div>
+                <button class="btn btn-success" @click="upgradeAgent" :disabled="upgradingAgent">
+                  {{ upgradingAgent ? '升级中...' : '升级 Agent' }}
                 </button>
-                <span v-if="agentConfigSaved" style="color: #28a745; margin-left: 10px;">已保存</span>
               </div>
             </div>
             <div v-else-if="agentConfigError" style="color: #dc3545; text-align: center; padding: 20px;">
@@ -525,6 +530,7 @@
         const agentConfigError = ref('');
         const savingAgentConfig = ref(false);
         const agentConfigSaved = ref(false);
+        const upgradingAgent = ref(false);
 
         const showAddReporter = ref(false);
         const newReporter = reactive({
@@ -745,14 +751,25 @@
               agentConfigError.value = result.error;
               return;
             }
-            // 确保 manager 对象存在
+            // 确保 manager 对象存在，并自动填充
             if (!result.manager) {
-              result.manager = {
-                url: '',
-                token: '',
-                node_id: selectedNode.value.id,
-                report_interval: 60000
-              };
+              result.manager = {};
+            }
+            // 自动填充 Manager URL（如果为空）
+            if (!result.manager.url) {
+              result.manager.url = window.location.origin;
+            }
+            // 自动填充 Manager Token（如果为空）
+            if (!result.manager.token) {
+              result.manager.token = API_TOKEN;
+            }
+            // 自动填充节点 ID（如果为空）
+            if (!result.manager.node_id) {
+              result.manager.node_id = selectedNode.value.id;
+            }
+            // 设置默认上报间隔
+            if (!result.manager.report_interval) {
+              result.manager.report_interval = 60000;
             }
             agentConfig.value = result;
           } catch (e) {
@@ -778,6 +795,26 @@
             alert('保存失败: ' + e.message);
           } finally {
             savingAgentConfig.value = false;
+          }
+        }
+
+        // 升级 Agent
+        async function upgradeAgent() {
+          if (!selectedNode.value) return;
+          if (!confirm('确定升级 Agent？升级过程中服务会短暂中断。')) return;
+
+          upgradingAgent.value = true;
+          try {
+            const result = await api('POST', `/nodes/${selectedNode.value.id}/upgrade`);
+            if (result.error) {
+              alert('升级失败: ' + result.error);
+              return;
+            }
+            alert('升级成功！Agent 正在重启...');
+          } catch (e) {
+            alert('升级失败: ' + e.message);
+          } finally {
+            upgradingAgent.value = false;
           }
         }
 
@@ -873,12 +910,12 @@
           showAddNode, newNode,
           selectedNode, detailTab, nodePool, nodePoolError, nodeReporters,
           showAddIP, newIP,
-          agentConfig, agentConfigError, savingAgentConfig, agentConfigSaved,
+          agentConfig, agentConfigError, savingAgentConfig, agentConfigSaved, upgradingAgent,
           showAddReporter, newReporter,
           loadNodes, loadLogs, addNode, deleteNodeConfirm,
           showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,
           addIP, removeAvailableIP, restoreDiscardedIP, removeDiscardedIP,
-          loadAgentConfig, saveAgentConfig,
+          loadAgentConfig, saveAgentConfig, upgradeAgent,
           addReporter, toggleReporter, deleteReporter,
           formatTime, getStatusClass, getStatusText
         };

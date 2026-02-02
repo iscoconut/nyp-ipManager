@@ -514,6 +514,29 @@ async function handleAPI(req, res, pathname, method, url) {
       }
     }
 
+    // POST /api/nodes/:id/upgrade - 远程升级 Agent
+    if (method === 'POST' && pathname.match(/^\/api\/nodes\/[^/]+\/upgrade$/)) {
+      const nodeId = pathname.split('/')[3];
+      const node = getNode(nodeId);
+      if (!node) {
+        return jsonResponse(res, { error: 'Node not found' }, 404);
+      }
+
+      try {
+        const agentUrl = `${node.url}/upgrade`;
+        const headers = {};
+        if (node.token) {
+          headers['Authorization'] = `Bearer ${node.token}`;
+        }
+
+        const response = await fetch(agentUrl, { method: 'POST', headers });
+        const result = await response.json();
+        return jsonResponse(res, result, response.ok ? 200 : 400);
+      } catch (error) {
+        return jsonResponse(res, { error: `Failed to contact agent: ${error.message}` }, 500);
+      }
+    }
+
     // ---------- 上报目标管理 ----------
 
     // GET /api/nodes/:id/reporters - 获取节点的上报目标
