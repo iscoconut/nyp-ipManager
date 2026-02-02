@@ -338,6 +338,114 @@ async function handleAPI(req, res, pathname, method, url) {
       }
     }
 
+    // POST /api/nodes/:id/pool/add - 添加备用 IP
+    if (method === 'POST' && pathname.match(/^\/api\/nodes\/[^/]+\/pool\/add$/)) {
+      const nodeId = pathname.split('/')[3];
+      const node = getNode(nodeId);
+      if (!node) {
+        return jsonResponse(res, { error: 'Node not found' }, 404);
+      }
+
+      const body = await parseBody(req);
+
+      try {
+        const agentUrl = `${node.url}/pool/add`;
+        const headers = { 'Content-Type': 'application/json' };
+        if (node.token) {
+          headers['Authorization'] = `Bearer ${node.token}`;
+        }
+
+        const response = await fetch(agentUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body)
+        });
+        const result = await response.json();
+        return jsonResponse(res, result, response.ok ? 200 : 400);
+      } catch (error) {
+        return jsonResponse(res, { error: `Failed to contact agent: ${error.message}` }, 500);
+      }
+    }
+
+    // POST /api/nodes/:id/pool/restore - 恢复废弃 IP
+    if (method === 'POST' && pathname.match(/^\/api\/nodes\/[^/]+\/pool\/restore$/)) {
+      const nodeId = pathname.split('/')[3];
+      const node = getNode(nodeId);
+      if (!node) {
+        return jsonResponse(res, { error: 'Node not found' }, 404);
+      }
+
+      const body = await parseBody(req);
+
+      try {
+        const agentUrl = `${node.url}/pool/restore`;
+        const headers = { 'Content-Type': 'application/json' };
+        if (node.token) {
+          headers['Authorization'] = `Bearer ${node.token}`;
+        }
+
+        const response = await fetch(agentUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body)
+        });
+        const result = await response.json();
+        return jsonResponse(res, result, response.ok ? 200 : 400);
+      } catch (error) {
+        return jsonResponse(res, { error: `Failed to contact agent: ${error.message}` }, 500);
+      }
+    }
+
+    // DELETE /api/nodes/:id/pool/available/:ip - 删除可用 IP
+    if (method === 'DELETE' && pathname.match(/^\/api\/nodes\/[^/]+\/pool\/available\/.+$/)) {
+      const parts = pathname.split('/');
+      const nodeId = parts[3];
+      const ip = decodeURIComponent(parts[6]);
+      const node = getNode(nodeId);
+      if (!node) {
+        return jsonResponse(res, { error: 'Node not found' }, 404);
+      }
+
+      try {
+        const agentUrl = `${node.url}/pool/available/${encodeURIComponent(ip)}`;
+        const headers = {};
+        if (node.token) {
+          headers['Authorization'] = `Bearer ${node.token}`;
+        }
+
+        const response = await fetch(agentUrl, { method: 'DELETE', headers });
+        const result = await response.json();
+        return jsonResponse(res, result, response.ok ? 200 : 400);
+      } catch (error) {
+        return jsonResponse(res, { error: `Failed to contact agent: ${error.message}` }, 500);
+      }
+    }
+
+    // DELETE /api/nodes/:id/pool/discarded/:ip - 删除废弃 IP
+    if (method === 'DELETE' && pathname.match(/^\/api\/nodes\/[^/]+\/pool\/discarded\/.+$/)) {
+      const parts = pathname.split('/');
+      const nodeId = parts[3];
+      const ip = decodeURIComponent(parts[6]);
+      const node = getNode(nodeId);
+      if (!node) {
+        return jsonResponse(res, { error: 'Node not found' }, 404);
+      }
+
+      try {
+        const agentUrl = `${node.url}/pool/discarded/${encodeURIComponent(ip)}`;
+        const headers = {};
+        if (node.token) {
+          headers['Authorization'] = `Bearer ${node.token}`;
+        }
+
+        const response = await fetch(agentUrl, { method: 'DELETE', headers });
+        const result = await response.json();
+        return jsonResponse(res, result, response.ok ? 200 : 400);
+      } catch (error) {
+        return jsonResponse(res, { error: `Failed to contact agent: ${error.message}` }, 500);
+      }
+    }
+
     // ---------- Agent 配置管理 ----------
 
     // GET /api/nodes/:id/agent-config - 获取 Agent 配置

@@ -157,9 +157,6 @@
                 </td>
                 <td>{{ formatTime(node.last_report_at) }}</td>
                 <td>
-                  <button class="btn btn-sm btn-success" @click="switchIP(node)" :disabled="switching[node.id]">
-                    {{ switching[node.id] ? '切换中...' : '换 IP' }}
-                  </button>
                   <button class="btn btn-sm btn-primary" @click="showNodeDetail(node)">详情</button>
                   <button class="btn btn-sm btn-danger" @click="deleteNodeConfirm(node)">删除</button>
                 </td>
@@ -244,28 +241,44 @@
           <div v-if="detailTab === 'pool'">
             <div v-if="nodePool">
               <h4 style="margin: 15px 0 10px;">当前 IP</h4>
-              <div class="ip-item current">
-                <span>{{ nodePool.current?.ip }} / {{ nodePool.current?.netmask }}</span>
-                <span style="color: #666;">网关: {{ nodePool.current?.gateway }}</span>
+              <div class="ip-item current" v-if="nodePool.current?.ip">
+                <span>{{ nodePool.current.ip }} / {{ nodePool.current.netmask }}</span>
+                <span style="color: #666;">网关: {{ nodePool.current.gateway }}</span>
               </div>
+              <p v-else style="color: #666; padding: 10px;">未配置当前 IP</p>
 
-              <h4 style="margin: 15px 0 10px;">可用 IP ({{ nodePool.available?.length || 0 }})</h4>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin: 15px 0 10px;">
+                <h4 style="margin: 0;">可用 IP ({{ nodePool.available?.length || 0 }})</h4>
+                <button class="btn btn-sm btn-primary" @click="showAddIP = true">添加备用 IP</button>
+              </div>
               <div class="ip-list">
                 <div class="ip-item" v-for="ip in nodePool.available" :key="ip.ip">
-                  <span>{{ ip.ip }} / {{ ip.netmask }}</span>
-                  <span style="color: #666;">网关: {{ ip.gateway }}</span>
+                  <div>
+                    <span>{{ ip.ip }} / {{ ip.netmask }}</span>
+                    <br><small style="color: #666;">网关: {{ ip.gateway }}</small>
+                  </div>
+                  <button class="btn btn-sm btn-danger" @click="removeAvailableIP(ip.ip)">删除</button>
                 </div>
-                <p v-if="!nodePool.available?.length" style="color: #666; padding: 10px;">无可用 IP</p>
+                <p v-if="!nodePool.available?.length" style="color: #666; padding: 10px;">无可用 IP，请添加备用 IP</p>
               </div>
 
               <h4 style="margin: 15px 0 10px;">废弃 IP ({{ nodePool.discarded?.length || 0 }})</h4>
               <div class="ip-list">
                 <div class="ip-item discarded" v-for="ip in nodePool.discarded" :key="ip.ip">
-                  <span>{{ ip.ip }} / {{ ip.netmask }}</span>
-                  <span style="color: #666;">{{ formatTime(ip.discarded_at) }}</span>
+                  <div>
+                    <span>{{ ip.ip }} / {{ ip.netmask }}</span>
+                    <br><small style="color: #666;">废弃于: {{ formatTime(ip.discarded_at) }}</small>
+                  </div>
+                  <div>
+                    <button class="btn btn-sm btn-success" @click="restoreDiscardedIP(ip.ip)">恢复</button>
+                    <button class="btn btn-sm btn-danger" @click="removeDiscardedIP(ip.ip)">删除</button>
+                  </div>
                 </div>
                 <p v-if="!nodePool.discarded?.length" style="color: #666; padding: 10px;">无废弃 IP</p>
               </div>
+            </div>
+            <div v-else-if="nodePoolError" style="color: #dc3545; text-align: center; padding: 20px;">
+              {{ nodePoolError }}
             </div>
             <p v-else style="color: #666; text-align: center; padding: 20px;">加载中...</p>
           </div>
@@ -443,6 +456,36 @@
           </div>
         </div>
       </div>
+
+      <!-- Add IP Modal -->
+      <div class="modal-overlay" v-if="showAddIP" @click.self="showAddIP = false">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>添加备用 IP</h3>
+            <button class="modal-close" @click="showAddIP = false">&times;</button>
+          </div>
+          <div class="form-group">
+            <label>IP 地址</label>
+            <input v-model="newIP.ip" placeholder="如：192.168.1.100">
+          </div>
+          <div class="form-group">
+            <label>子网掩码</label>
+            <input v-model="newIP.netmask" placeholder="如：24 或 255.255.255.0">
+          </div>
+          <div class="form-group">
+            <label>网关</label>
+            <input v-model="newIP.gateway" placeholder="如：192.168.1.1">
+          </div>
+          <div class="form-group">
+            <label>策略路由源地址</label>
+            <input v-model="newIP.rule_from" placeholder="如：192.168.1.100/32">
+          </div>
+          <div class="modal-footer">
+            <button class="btn" @click="showAddIP = false">取消</button>
+            <button class="btn btn-primary" @click="addIP">添加</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -470,7 +513,12 @@
         const selectedNode = ref(null);
         const detailTab = ref('pool');
         const nodePool = ref(null);
+        const nodePoolError = ref('');
         const nodeReporters = ref([]);
+
+        // IP 池管理
+        const showAddIP = ref(false);
+        const newIP = reactive({ ip: '', netmask: '24', gateway: '', rule_from: '' });
 
         // Agent 配置
         const agentConfig = ref(null);
@@ -610,7 +658,72 @@
         // 加载节点 IP 池
         async function loadNodePool() {
           if (!selectedNode.value) return;
-          nodePool.value = await api('GET', `/nodes/${selectedNode.value.id}/pool`);
+          nodePool.value = null;
+          nodePoolError.value = '';
+          try {
+            const result = await api('GET', `/nodes/${selectedNode.value.id}/pool`);
+            if (result.error) {
+              nodePoolError.value = result.error;
+              return;
+            }
+            nodePool.value = result;
+          } catch (e) {
+            nodePoolError.value = e.message;
+          }
+        }
+
+        // 添加备用 IP
+        async function addIP() {
+          if (!selectedNode.value || !newIP.ip) return;
+          try {
+            const result = await api('POST', `/nodes/${selectedNode.value.id}/pool/add`, {
+              ip: newIP.ip,
+              netmask: newIP.netmask,
+              gateway: newIP.gateway,
+              rule_from: newIP.rule_from || `${newIP.ip}/32`
+            });
+            if (result.error) {
+              alert('添加失败: ' + result.error);
+              return;
+            }
+            showAddIP.value = false;
+            Object.assign(newIP, { ip: '', netmask: '24', gateway: '', rule_from: '' });
+            loadNodePool();
+          } catch (e) {
+            alert('添加失败: ' + e.message);
+          }
+        }
+
+        // 删除可用 IP
+        async function removeAvailableIP(ip) {
+          if (!confirm(`确定删除 ${ip}？`)) return;
+          try {
+            await api('DELETE', `/nodes/${selectedNode.value.id}/pool/available/${encodeURIComponent(ip)}`);
+            loadNodePool();
+          } catch (e) {
+            alert('删除失败: ' + e.message);
+          }
+        }
+
+        // 恢复废弃 IP
+        async function restoreDiscardedIP(ip) {
+          try {
+            await api('POST', `/nodes/${selectedNode.value.id}/pool/restore`, { ip });
+            loadNodePool();
+          } catch (e) {
+            alert('恢复失败: ' + e.message);
+          }
+        }
+
+        // 删除废弃 IP
+        async function removeDiscardedIP(ip) {
+          if (!confirm(`确定删除 ${ip}？`)) return;
+          try {
+            await api('DELETE', `/nodes/${selectedNode.value.id}/pool/discarded/${encodeURIComponent(ip)}`);
+            loadNodePool();
+          } catch (e) {
+            alert('删除失败: ' + e.message);
+          }
         }
 
         // 加载节点上报配置
@@ -756,13 +869,15 @@
 
         return {
           authenticated, inputToken, loginError, logging, login, logout,
-          currentTab, nodes, logs, logFilter, switching,
+          currentTab, nodes, logs, logFilter,
           showAddNode, newNode,
-          selectedNode, detailTab, nodePool, nodeReporters,
+          selectedNode, detailTab, nodePool, nodePoolError, nodeReporters,
+          showAddIP, newIP,
           agentConfig, agentConfigError, savingAgentConfig, agentConfigSaved,
           showAddReporter, newReporter,
-          loadNodes, loadLogs, addNode, deleteNodeConfirm, switchIP,
+          loadNodes, loadLogs, addNode, deleteNodeConfirm,
           showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,
+          addIP, removeAvailableIP, restoreDiscardedIP, removeDiscardedIP,
           loadAgentConfig, saveAgentConfig,
           addReporter, toggleReporter, deleteReporter,
           formatTime, getStatusClass, getStatusText
