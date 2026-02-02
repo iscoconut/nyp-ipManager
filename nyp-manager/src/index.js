@@ -338,6 +338,74 @@ async function handleAPI(req, res, pathname, method, url) {
       }
     }
 
+    // ---------- Agent 配置管理 ----------
+
+    // GET /api/nodes/:id/agent-config - 获取 Agent 配置
+    if (method === 'GET' && pathname.match(/^\/api\/nodes\/[^/]+\/agent-config$/)) {
+      const nodeId = pathname.split('/')[3];
+      const node = getNode(nodeId);
+      if (!node) {
+        return jsonResponse(res, { error: 'Node not found' }, 404);
+      }
+
+      try {
+        const agentUrl = `${node.url}/config`;
+        const headers = {};
+        if (node.token) {
+          headers['Authorization'] = `Bearer ${node.token}`;
+        }
+
+        const response = await fetch(agentUrl, { headers });
+        const result = await response.json();
+        return jsonResponse(res, result, response.ok ? 200 : 400);
+      } catch (error) {
+        return jsonResponse(res, { error: `Failed to contact agent: ${error.message}` }, 500);
+      }
+    }
+
+    // PUT /api/nodes/:id/agent-config - 更新 Agent 配置
+    if (method === 'PUT' && pathname.match(/^\/api\/nodes\/[^/]+\/agent-config$/)) {
+      const nodeId = pathname.split('/')[3];
+      const node = getNode(nodeId);
+      if (!node) {
+        return jsonResponse(res, { error: 'Node not found' }, 404);
+      }
+
+      const body = await parseBody(req);
+
+      try {
+        const agentUrl = `${node.url}/config`;
+        const headers = { 'Content-Type': 'application/json' };
+        if (node.token) {
+          headers['Authorization'] = `Bearer ${node.token}`;
+        }
+
+        const response = await fetch(agentUrl, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(body)
+        });
+
+        const result = await response.json();
+
+        // 如果更新成功且包含 manager 配置，需要重载 Agent
+        if (response.ok && result.reload_required) {
+          try {
+            await fetch(`${node.url}/reload`, {
+              method: 'POST',
+              headers: node.token ? { 'Authorization': `Bearer ${node.token}` } : {}
+            });
+          } catch (e) {
+            console.log(`[API] Failed to reload agent: ${e.message}`);
+          }
+        }
+
+        return jsonResponse(res, result, response.ok ? 200 : 400);
+      } catch (error) {
+        return jsonResponse(res, { error: `Failed to contact agent: ${error.message}` }, 500);
+      }
+    }
+
     // ---------- 上报目标管理 ----------
 
     // GET /api/nodes/:id/reporters - 获取节点的上报目标

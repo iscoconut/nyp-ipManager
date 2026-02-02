@@ -235,6 +235,7 @@
 
           <div class="tabs" style="margin-top: 10px;">
             <div class="tab" :class="{ active: detailTab === 'pool' }" @click="detailTab = 'pool'; loadNodePool()">IP 池</div>
+            <div class="tab" :class="{ active: detailTab === 'agentConfig' }" @click="detailTab = 'agentConfig'; loadAgentConfig()">Agent 配置</div>
             <div class="tab" :class="{ active: detailTab === 'reporters' }" @click="detailTab = 'reporters'; loadNodeReporters()">上报配置</div>
             <div class="tab" :class="{ active: detailTab === 'settings' }" @click="detailTab = 'settings'">节点设置</div>
           </div>
@@ -265,6 +266,89 @@
                 </div>
                 <p v-if="!nodePool.discarded?.length" style="color: #666; padding: 10px;">无废弃 IP</p>
               </div>
+            </div>
+            <p v-else style="color: #666; text-align: center; padding: 20px;">加载中...</p>
+          </div>
+
+          <!-- Agent Config Tab -->
+          <div v-if="detailTab === 'agentConfig'">
+            <div v-if="agentConfig">
+              <h4 style="margin: 15px 0 10px;">网络配置</h4>
+              <div class="form-group">
+                <label>网卡接口</label>
+                <input v-model="agentConfig.interface" placeholder="如：eth0">
+              </div>
+              <div class="form-group">
+                <label>配置类型</label>
+                <select v-model="agentConfig.config_type">
+                  <option value="networking">networking (ifupdown)</option>
+                  <option value="netplan">netplan</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>配置文件路径</label>
+                <input v-model="agentConfig.config_file" placeholder="如：/etc/network/interfaces">
+              </div>
+              <div class="form-group">
+                <label>路由表号</label>
+                <input type="number" v-model="agentConfig.route_table" placeholder="如：100">
+              </div>
+
+              <h4 style="margin: 15px 0 10px;">检测配置</h4>
+              <div class="form-group">
+                <label>检测目标 1</label>
+                <input v-model="agentConfig.curl_target_1" placeholder="如：baidu.com">
+              </div>
+              <div class="form-group">
+                <label>检测目标 2</label>
+                <input v-model="agentConfig.curl_target_2" placeholder="如：https://223.5.5.5/dns-query">
+              </div>
+              <div class="form-group">
+                <label>带宽阈值 (Mbps)</label>
+                <input type="number" v-model="agentConfig.bandwidth_threshold" placeholder="如：10">
+              </div>
+              <div class="form-group">
+                <label>失败阈值（连续失败次数）</label>
+                <input type="number" v-model="agentConfig.fail_threshold" placeholder="如：10">
+              </div>
+              <div class="form-group">
+                <label>检测间隔 (ms)</label>
+                <input type="number" v-model="agentConfig.check_interval" placeholder="如：5000">
+              </div>
+
+              <h4 style="margin: 15px 0 10px;">Manager 上报配置</h4>
+              <div class="form-group">
+                <label>Manager URL</label>
+                <input v-model="agentConfig.manager.url" placeholder="如：http://manager-ip:3001">
+              </div>
+              <div class="form-group">
+                <label>Manager Token</label>
+                <input v-model="agentConfig.manager.token" placeholder="Manager 的 API Token">
+              </div>
+              <div class="form-group">
+                <label>节点 ID</label>
+                <input v-model="agentConfig.manager.node_id" :placeholder="selectedNode?.id">
+              </div>
+              <div class="form-group">
+                <label>上报间隔 (ms)</label>
+                <input type="number" v-model="agentConfig.manager.report_interval" placeholder="如：60000">
+              </div>
+
+              <h4 style="margin: 15px 0 10px;">API 配置</h4>
+              <div class="form-group">
+                <label>Agent API Token</label>
+                <input v-model="agentConfig.api_token" placeholder="Agent 的 API Token">
+              </div>
+
+              <div style="margin-top: 20px;">
+                <button class="btn btn-primary" @click="saveAgentConfig" :disabled="savingAgentConfig">
+                  {{ savingAgentConfig ? '保存中...' : '保存配置' }}
+                </button>
+                <span v-if="agentConfigSaved" style="color: #28a745; margin-left: 10px;">已保存</span>
+              </div>
+            </div>
+            <div v-else-if="agentConfigError" style="color: #dc3545; text-align: center; padding: 20px;">
+              {{ agentConfigError }}
             </div>
             <p v-else style="color: #666; text-align: center; padding: 20px;">加载中...</p>
           </div>
@@ -387,6 +471,12 @@
         const detailTab = ref('pool');
         const nodePool = ref(null);
         const nodeReporters = ref([]);
+
+        // Agent 配置
+        const agentConfig = ref(null);
+        const agentConfigError = ref('');
+        const savingAgentConfig = ref(false);
+        const agentConfigSaved = ref(false);
 
         const showAddReporter = ref(false);
         const newReporter = reactive({
@@ -529,6 +619,55 @@
           nodeReporters.value = await api('GET', `/nodes/${selectedNode.value.id}/reporters`);
         }
 
+        // 加载 Agent 配置
+        async function loadAgentConfig() {
+          if (!selectedNode.value) return;
+          agentConfig.value = null;
+          agentConfigError.value = '';
+          agentConfigSaved.value = false;
+
+          try {
+            const result = await api('GET', `/nodes/${selectedNode.value.id}/agent-config`);
+            if (result.error) {
+              agentConfigError.value = result.error;
+              return;
+            }
+            // 确保 manager 对象存在
+            if (!result.manager) {
+              result.manager = {
+                url: '',
+                token: '',
+                node_id: selectedNode.value.id,
+                report_interval: 60000
+              };
+            }
+            agentConfig.value = result;
+          } catch (e) {
+            agentConfigError.value = e.message;
+          }
+        }
+
+        // 保存 Agent 配置
+        async function saveAgentConfig() {
+          if (!selectedNode.value || !agentConfig.value) return;
+          savingAgentConfig.value = true;
+          agentConfigSaved.value = false;
+
+          try {
+            const result = await api('PUT', `/nodes/${selectedNode.value.id}/agent-config`, agentConfig.value);
+            if (result.error) {
+              alert('保存失败: ' + result.error);
+              return;
+            }
+            agentConfigSaved.value = true;
+            setTimeout(() => { agentConfigSaved.value = false; }, 3000);
+          } catch (e) {
+            alert('保存失败: ' + e.message);
+          } finally {
+            savingAgentConfig.value = false;
+          }
+        }
+
         // 更新节点设置
         async function updateNodeSettings() {
           await api('PUT', `/nodes/${selectedNode.value.id}`, {
@@ -620,9 +759,11 @@
           currentTab, nodes, logs, logFilter, switching,
           showAddNode, newNode,
           selectedNode, detailTab, nodePool, nodeReporters,
+          agentConfig, agentConfigError, savingAgentConfig, agentConfigSaved,
           showAddReporter, newReporter,
           loadNodes, loadLogs, addNode, deleteNodeConfirm, switchIP,
           showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,
+          loadAgentConfig, saveAgentConfig,
           addReporter, toggleReporter, deleteReporter,
           formatTime, getStatusClass, getStatusText
         };

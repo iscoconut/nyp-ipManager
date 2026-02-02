@@ -297,4 +297,12 @@ export class Switcher {
     await this.ipPool.load();
     console.log('[Switcher] Configuration reloaded');
   }
+
+  /**
+   * 更新配置
+   */
+  async updateConfig(newConfig) {
+    await this.ipPool.updateConfig(newConfig);
+    console.log('[Switcher] Configuration updated');
+  }
 }

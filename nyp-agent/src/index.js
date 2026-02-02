@@ -108,6 +108,17 @@ async function handleRequest(req, res) {
       return jsonResponse(res, config);
     }
 
+    // PUT /config - 更新配置
+    if (method === 'PUT' && pathname === '/config') {
+      const body = await parseBody(req);
+      await switcher.updateConfig(body);
+      // 更新本地 apiToken
+      if (body.api_token !== undefined) {
+        apiToken = body.api_token || null;
+      }
+      return jsonResponse(res, { message: 'Configuration updated', reload_required: true });
+    }
+
     // POST /switch - 手动触发换 IP
     if (method === 'POST' && pathname === '/switch') {
       const result = await switcher.manualSwitch();

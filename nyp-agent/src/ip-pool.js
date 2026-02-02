@@ -195,7 +195,48 @@ export class IPPool {
       route_table: this.config.route_table,
       current: this.config.current,
       available: this.config.available,
-      discarded: this.config.discarded
+      discarded: this.config.discarded,
+      // 检测配置
+      curl_target_1: this.config.curl_target_1 || this.config.curl_target,
+      curl_target_2: this.config.curl_target_2,
+      bandwidth_threshold: this.config.bandwidth_threshold,
+      fail_threshold: this.config.fail_threshold,
+      check_interval: this.config.check_interval,
+      // Manager 配置
+      manager: this.config.manager,
+      // API Token
+      api_token: this.config.api_token
     };
+  }
+
+  /**
+   * 更新配置
+   */
+  async updateConfig(newConfig) {
+    // 保留 IP 池数据，只更新其他配置
+    const updatedConfig = {
+      ...this.config,
+      interface: newConfig.interface ?? this.config.interface,
+      config_type: newConfig.config_type ?? this.config.config_type,
+      config_file: newConfig.config_file ?? this.config.config_file,
+      route_table: newConfig.route_table ?? this.config.route_table,
+      curl_target_1: newConfig.curl_target_1,
+      curl_target_2: newConfig.curl_target_2,
+      bandwidth_threshold: newConfig.bandwidth_threshold,
+      fail_threshold: newConfig.fail_threshold,
+      check_interval: newConfig.check_interval,
+      manager: newConfig.manager ?? this.config.manager,
+      api_token: newConfig.api_token ?? this.config.api_token
+    };
+
+    // 清理 undefined 值
+    Object.keys(updatedConfig).forEach(key => {
+      if (updatedConfig[key] === undefined) {
+        delete updatedConfig[key];
+      }
+    });
+
+    this.config = updatedConfig;
+    await this.save();
   }
 }
