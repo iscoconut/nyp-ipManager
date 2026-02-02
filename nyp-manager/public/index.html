@@ -412,6 +412,7 @@
                     </span>
                   </div>
                   <div>
+                    <button class="btn btn-sm btn-primary" @click="editReporter(reporter)">编辑</button>
                     <button class="btn btn-sm" @click="toggleReporter(reporter)">
                       {{ reporter.enabled ? '禁用' : '启用' }}
                     </button>
@@ -448,12 +449,12 @@
         </div>
       </div>
 
-      <!-- Add Reporter Modal -->
-      <div class="modal-overlay" v-if="showAddReporter" @click.self="showAddReporter = false">
+      <!-- Add/Edit Reporter Modal -->
+      <div class="modal-overlay" v-if="showAddReporter" @click.self="closeReporterModal">
         <div class="modal">
           <div class="modal-header">
-            <h3>添加上报目标</h3>
-            <button class="modal-close" @click="showAddReporter = false">&times;</button>
+            <h3>{{ editingReporter ? '编辑上报目标' : '添加上报目标' }}</h3>
+            <button class="modal-close" @click="closeReporterModal">&times;</button>
           </div>
           <div class="form-group">
             <label>类型</label>
@@ -481,8 +482,8 @@
             </div>
           </div>
           <div class="modal-footer">
-            <button class="btn" @click="showAddReporter = false">取消</button>
-            <button class="btn btn-primary" @click="addReporter">添加</button>
+            <button class="btn" @click="closeReporterModal">取消</button>
+            <button class="btn btn-primary" @click="saveReporter">{{ editingReporter ? '保存' : '添加' }}</button>
           </div>
         </div>
       </div>
@@ -567,6 +568,7 @@
         const agentVersion = ref('');
 
         const showAddReporter = ref(false);
+        const editingReporter = ref(null);
         const newReporter = reactive({
           type: 'nyanpass',
           config: { admin_url: '', username: '', password: '', device_group_id: '' }
@@ -928,14 +930,44 @@
         }
 
         // 添加上报配置
-        async function addReporter() {
-          await api('POST', `/nodes/${selectedNode.value.id}/reporters`, {
-            type: newReporter.type,
-            config: newReporter.config
-          });
+        // 打开编辑上报配置
+        function editReporter(reporter) {
+          editingReporter.value = reporter;
+          newReporter.type = reporter.type;
+          Object.assign(newReporter.config, reporter.config);
+          showAddReporter.value = true;
+        }
+
+        // 关闭上报配置弹窗
+        function closeReporterModal() {
           showAddReporter.value = false;
+          editingReporter.value = null;
+          newReporter.type = 'nyanpass';
           Object.assign(newReporter.config, { admin_url: '', username: '', password: '', device_group_id: '' });
+        }
+
+        // 保存上报配置（添加或编辑）
+        async function saveReporter() {
+          if (editingReporter.value) {
+            // 编辑模式
+            await api('PUT', `/reporters/${editingReporter.value.id}`, {
+              type: newReporter.type,
+              config: newReporter.config
+            });
+          } else {
+            // 添加模式
+            await api('POST', `/nodes/${selectedNode.value.id}/reporters`, {
+              type: newReporter.type,
+              config: newReporter.config
+            });
+          }
+          closeReporterModal();
           loadNodeReporters();
+        }
+
+        // 添加上报配置（保持兼容）
+        async function addReporter() {
+          await saveReporter();
         }
 
         // 切换上报配置启用状态
@@ -1069,12 +1101,12 @@
           selectedNode, detailTab, nodePool, nodePoolError, nodeReporters,
           showAddIP, newIP,
           agentConfig, agentConfigError, savingAgentConfig, agentConfigSaved, upgradingAgent, agentVersion,
-          showAddReporter, newReporter,
+          showAddReporter, editingReporter, newReporter,
           loadNodes, loadLogs, addNode, deleteNodeConfirm, upgradeNodeAgent,
           showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,
           addIP, removeAvailableIP, restoreDiscardedIP, removeDiscardedIP,
           loadAgentConfig, saveAgentConfig, upgradeAgent,
-          addReporter, toggleReporter, deleteReporter,
+          editReporter, closeReporterModal, saveReporter, addReporter, toggleReporter, deleteReporter,
           testingReport, testReportResult, testReport,
           formatTime, getStatusClass, getStatusText
         };
