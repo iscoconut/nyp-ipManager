@@ -115,9 +115,6 @@
         <h1>NYP Manager</h1>
         <div class="header-right">
           <span class="version-info">v{{ managerVersion }}</span>
-          <button class="btn btn-sm btn-success" @click="upgradeManager" :disabled="upgradingManager">
-            {{ upgradingManager ? '升级中...' : '升级面板' }}
-          </button>
           <button class="logout-btn" @click="logout">退出登录</button>
         </div>
       </div>
@@ -155,7 +152,7 @@
                 <td>
                   <span v-if="node._loading" style="color: #666;">读取中...</span>
                   <span v-else-if="node._error" style="color: #dc3545;">读取失败</span>
-                  <span v-else>{{ node.status?.current_ip?.ip || '-' }}</span>
+                  <span v-else>{{ node.status?.current_ip || '-' }}</span>
                 </td>
                 <td>
                   <span class="badge" :class="getStatusClass(node)">
@@ -393,8 +390,16 @@
 
           <!-- Reporters Tab -->
           <div v-if="detailTab === 'reporters'">
-            <div style="margin-bottom: 15px;">
+            <div style="margin-bottom: 15px; display: flex; gap: 10px;">
               <button class="btn btn-primary btn-sm" @click="showAddReporter = true">添加上报目标</button>
+              <button class="btn btn-success btn-sm" @click="testReport" :disabled="testingReport">
+                {{ testingReport ? '测试中...' : '测试上报' }}
+              </button>
+            </div>
+            <div v-if="testReportResult" :style="{ padding: '10px', marginBottom: '15px', borderRadius: '4px', background: testReportResult.success ? '#d4edda' : '#f8d7da', color: testReportResult.success ? '#155724' : '#721c24' }">
+              <strong>{{ testReportResult.message }}</strong>
+              <div v-if="testReportResult.ip" style="margin-top: 5px;">上报 IP: {{ testReportResult.ip }}</div>
+              <div v-if="testReportResult.details" style="margin-top: 5px; font-size: 13px;">{{ testReportResult.details }}</div>
             </div>
 
             <div v-if="nodeReporters.length">
@@ -540,6 +545,10 @@
         const nodePool = ref(null);
         const nodePoolError = ref('');
         const nodeReporters = ref([]);
+
+        // 测试上报
+        const testingReport = ref(false);
+        const testReportResult = ref(null);
 
         // IP 池管理
         const showAddIP = ref(false);
@@ -943,6 +952,39 @@
           }
         }
 
+        // 测试上报
+        async function testReport() {
+          if (!selectedNode.value) return;
+          testingReport.value = true;
+          testReportResult.value = null;
+
+          try {
+            const result = await api('POST', `/nodes/${selectedNode.value.id}/test-report`);
+            if (result.error) {
+              testReportResult.value = {
+                success: false,
+                message: '上报失败',
+                details: result.error
+              };
+            } else {
+              testReportResult.value = {
+                success: true,
+                message: '上报成功',
+                ip: result.current_ip,
+                details: result.results?.map(r => `${r.type}: ${r.success ? '成功' : '失败'}`).join(', ')
+              };
+            }
+          } catch (e) {
+            testReportResult.value = {
+              success: false,
+              message: '上报失败',
+              details: e.message
+            };
+          } finally {
+            testingReport.value = false;
+          }
+        }
+
         // 格式化时间
         function formatTime(time) {
           if (!time) return '-';
@@ -1030,6 +1072,7 @@
           addIP, removeAvailableIP, restoreDiscardedIP, removeDiscardedIP,
           loadAgentConfig, saveAgentConfig, upgradeAgent,
           addReporter, toggleReporter, deleteReporter,
+          testingReport, testReportResult, testReport,
           formatTime, getStatusClass, getStatusText
         };
       }

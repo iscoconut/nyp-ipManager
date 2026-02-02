@@ -3,8 +3,6 @@ import { URL } from 'url';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import {
   initDB,
   getAllNodes, getNode, createNode, updateNode, updateNodeStatus, deleteNode,
@@ -13,8 +11,6 @@ import {
 } from './db.js';
 import { getDispatcher } from './reporters/index.js';
 import { VERSION } from './version.js';
-
-const execAsync = promisify(exec);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -641,6 +637,43 @@ async function handleAPI(req, res, pathname, method, url) {
       return jsonResponse(res, { message: 'Reporter deleted' });
     }
 
+    // POST /api/nodes/:id/test-report - 测试上报
+    if (method === 'POST' && pathname.match(/^\/api\/nodes\/[^/]+\/test-report$/)) {
+      const nodeId = pathname.split('/')[3];
+      const node = getNode(nodeId);
+      if (!node) {
+        return jsonResponse(res, { error: 'Node not found' }, 404);
+      }
+
+      try {
+        // 从 Agent 获取当前 IP
+        const agentUrl = `${node.url}/status`;
+        const headers = {};
+        if (node.token) {
+          headers['Authorization'] = `Bearer ${node.token}`;
+        }
+
+        const statusResponse = await fetch(agentUrl, { headers, signal: AbortSignal.timeout(5000) });
+        const status = await statusResponse.json();
+
+        if (!status.current_ip) {
+          return jsonResponse(res, { error: 'Agent 未返回当前 IP' }, 400);
+        }
+
+        // 执行上报
+        const dispatcher = getDispatcher();
+        const reportResults = await dispatcher.report(nodeId, status.current_ip, null);
+
+        return jsonResponse(res, {
+          message: '测试上报完成',
+          current_ip: status.current_ip,
+          results: reportResults
+        });
+      } catch (error) {
+        return jsonResponse(res, { error: `测试上报失败: ${error.message}` }, 500);
+      }
+    }
+
     // ---------- 日志 ----------
 
     // GET /api/logs - 获取日志
@@ -650,37 +683,6 @@ async function handleAPI(req, res, pathname, method, url) {
       const offset = parseInt(url.searchParams.get('offset') || '0');
       const logs = getLogs({ nodeId, limit, offset });
       return jsonResponse(res, logs);
-    }
-
-    // POST /api/upgrade - Manager 自身升级
-    if (method === 'POST' && pathname === '/api/upgrade') {
-      console.log('[API] Manager self-upgrade triggered');
-
-      // 发送响应后再执行升级
-      jsonResponse(res, { message: 'Upgrade started, manager will restart shortly' });
-
-      // 延迟执行升级，确保响应已发送
-      setTimeout(async () => {
-        try {
-          // 尝试多个可能的脚本路径
-          const possiblePaths = [
-            path.join(__dirname, '../upgrade.sh'),
-            '/opt/nyp-manager/upgrade.sh'
-          ];
-          let upgradeScript = possiblePaths.find(p => fs.existsSync(p));
-          if (!upgradeScript) {
-            console.error('[API] Upgrade script not found');
-            return;
-          }
-          console.log(`[API] Executing upgrade script: ${upgradeScript}`);
-          // 使用 sudo 执行（需要配置免密 sudo）
-          await execAsync(`sudo bash ${upgradeScript}`, { timeout: 120000 });
-        } catch (error) {
-          console.error(`[API] Upgrade error: ${error.message}`);
-        }
-      }, 500);
-
-      return;
     }
 
     // 404
