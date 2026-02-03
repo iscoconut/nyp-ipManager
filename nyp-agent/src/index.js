@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import dotenv from 'dotenv';
 import { Switcher } from './switcher.js';
 import { Reporter } from './reporter.js';
 import { VERSION } from './version.js';
@@ -12,10 +13,13 @@ const execAsync = promisify(exec);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// 加载 .env 文件
+dotenv.config({ path: path.join(__dirname, '../config/.env') });
+
 // 配置文件路径
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(__dirname, '../config/config.json');
 const API_PORT = parseInt(process.env.API_PORT || '3000', 10);
-const API_HOST = process.env.API_HOST || '0.0.0.0';
+const API_HOST = process.env.API_HOST || '127.0.0.1';
 
 // 全局实例
 let switcher = null;

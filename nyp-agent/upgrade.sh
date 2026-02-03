@@ -94,6 +94,17 @@ if [ -f "$TEMP_DIR/repo/nyp-agent/upgrade.sh" ]; then
   chmod +x "$INSTALL_DIR/upgrade.sh"
 fi
 
+# 更新 .env.example（保留用户的 .env）
+if [ -f "$TEMP_DIR/repo/nyp-agent/config/.env.example" ]; then
+  cp "$TEMP_DIR/repo/nyp-agent/config/.env.example" "$INSTALL_DIR/config/"
+fi
+
+# 如果没有 .env 文件，从模板创建
+if [ ! -f "$INSTALL_DIR/config/.env" ] && [ -f "$INSTALL_DIR/config/.env.example" ]; then
+  cp "$INSTALL_DIR/config/.env.example" "$INSTALL_DIR/config/.env"
+  echo "  已创建默认 .env 配置"
+fi
+
 # 记录版本
 echo "$NEW_VERSION" > "$INSTALL_DIR/.version"
 

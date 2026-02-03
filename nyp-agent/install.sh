@@ -60,7 +60,15 @@ cp nyp-agent.service $SERVICE_FILE
 echo "[4/5] 重载 systemd..."
 systemctl daemon-reload
 
-echo "[5/5] 完成!"
+# 创建默认 .env 文件
+if [ ! -f "$INSTALL_DIR/config/.env" ]; then
+  cp $INSTALL_DIR/config/.env.example $INSTALL_DIR/config/.env
+  echo "  -> 已创建默认 .env 配置"
+fi
+
+echo "[5/5] 安装 npm 依赖..."
+cd $INSTALL_DIR && npm install --production
+
 echo ""
 echo "=========================================="
 echo "安装完成!"
@@ -68,14 +76,17 @@ echo "=========================================="
 echo ""
 echo "下一步:"
 echo ""
-echo "1. 编辑配置文件:"
+echo "1. 编辑主配置文件:"
 echo "   cp $INSTALL_DIR/config/config.example.json $INSTALL_DIR/config/config.json"
 echo "   nano $INSTALL_DIR/config/config.json"
 echo ""
-echo "2. 启动服务:"
+echo "2. (可选) 编辑环境配置:"
+echo "   nano $INSTALL_DIR/config/.env"
+echo ""
+echo "3. 启动服务:"
 echo "   systemctl start nyp-agent"
 echo ""
-echo "3. 设置开机自启:"
+echo "4. 设置开机自启:"
 echo "   systemctl enable nyp-agent"
 echo ""
 echo "4. 查看日志:"
