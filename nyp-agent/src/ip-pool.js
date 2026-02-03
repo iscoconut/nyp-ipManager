@@ -201,9 +201,7 @@ export class IPPool {
       curl_target_2: this.config.curl_target_2,
       bandwidth_threshold: this.config.bandwidth_threshold,
       fail_threshold: this.config.fail_threshold,
-      check_interval: this.config.check_interval,
-      // Manager 配置
-      manager: this.config.manager
+      check_interval: this.config.check_interval
     };
   }
 
@@ -222,8 +220,7 @@ export class IPPool {
       curl_target_2: newConfig.curl_target_2,
       bandwidth_threshold: newConfig.bandwidth_threshold,
       fail_threshold: newConfig.fail_threshold,
-      check_interval: newConfig.check_interval,
-      manager: newConfig.manager ?? this.config.manager
+      check_interval: newConfig.check_interval
     };
 
     // 清理 undefined 值

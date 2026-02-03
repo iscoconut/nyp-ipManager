@@ -1,14 +1,15 @@
 /**
  * Manager 上报模块
  * 负责向中心管理面板上报状态和事件
+ * 配置从环境变量读取：MANAGER_URL, MANAGER_TOKEN, MANAGER_NODE_ID
  */
 export class Reporter {
-  constructor(config) {
-    this.enabled = !!(config?.url);
-    this.managerUrl = config?.url || null;
-    this.token = config?.token || null;
-    this.nodeId = config?.node_id || null;
-    this.reportInterval = config?.report_interval || 60000; // 默认 60 秒
+  constructor() {
+    this.managerUrl = process.env.MANAGER_URL || null;
+    this.token = process.env.MANAGER_TOKEN || null;
+    this.nodeId = process.env.MANAGER_NODE_ID || null;
+    this.reportInterval = parseInt(process.env.MANAGER_REPORT_INTERVAL || '60000', 10);
+    this.enabled = !!this.managerUrl;
     this.timer = null;
     this.statusGetter = null;
   }

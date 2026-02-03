@@ -301,9 +301,8 @@ async function main() {
   apiToken = process.env.API_TOKEN || null;
   console.log(`Auth: ${apiToken ? 'enabled' : 'disabled'}`);
 
-  // 初始化 Reporter
-  const config = switcher.ipPool.config;
-  reporter = new Reporter(config.manager);
+  // 初始化 Reporter（从 .env 读取配置）
+  reporter = new Reporter();
   reporter.setStatusGetter(() => switcher.getStatus());
 
   // 设置 Switcher 的回调
