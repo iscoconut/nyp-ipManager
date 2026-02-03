@@ -297,12 +297,12 @@ async function main() {
   switcher = new Switcher(CONFIG_PATH);
   await switcher.init();
 
-  // 从配置文件读取 token（环境变量优先）
-  const config = switcher.ipPool.config;
-  apiToken = process.env.API_TOKEN || config.api_token || null;
+  // 从 .env 读取 API Token
+  apiToken = process.env.API_TOKEN || null;
   console.log(`Auth: ${apiToken ? 'enabled' : 'disabled'}`);
 
   // 初始化 Reporter
+  const config = switcher.ipPool.config;
   reporter = new Reporter(config.manager);
   reporter.setStatusGetter(() => switcher.getStatus());
 

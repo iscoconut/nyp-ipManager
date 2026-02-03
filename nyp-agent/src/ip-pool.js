@@ -203,9 +203,7 @@ export class IPPool {
       fail_threshold: this.config.fail_threshold,
       check_interval: this.config.check_interval,
       // Manager 配置
-      manager: this.config.manager,
-      // API Token
-      api_token: this.config.api_token
+      manager: this.config.manager
     };
   }
 
@@ -225,8 +223,7 @@ export class IPPool {
       bandwidth_threshold: newConfig.bandwidth_threshold,
       fail_threshold: newConfig.fail_threshold,
       check_interval: newConfig.check_interval,
-      manager: newConfig.manager ?? this.config.manager,
-      api_token: newConfig.api_token ?? this.config.api_token
+      manager: newConfig.manager ?? this.config.manager
     };
 
     // 清理 undefined 值
