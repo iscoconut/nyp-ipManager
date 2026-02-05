@@ -845,7 +845,26 @@
         async function addNode() {
           // 自动生成节点 ID
           const nodeId = 'node-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
-          await api('POST', '/nodes', { id: nodeId, ...newNode });
+          const result = await api('POST', '/nodes', { id: nodeId, ...newNode });
+
+          if (!result.error) {
+            // 自动下发 Manager 配置到 Agent
+            try {
+              const managerConfig = {
+                manager: {
+                  url: window.location.origin,
+                  token: API_TOKEN,
+                  node_id: nodeId,
+                  report_interval: 60000
+                }
+              };
+              await api('PUT', `/nodes/${nodeId}/agent-config`, managerConfig);
+              console.log('[Auto] Manager config pushed to new agent');
+            } catch (e) {
+              console.warn('[Auto] Failed to push manager config:', e.message);
+            }
+          }
+
           showAddNode.value = false;
           Object.assign(newNode, { name: '', url: '', token: '' });
           loadNodes();
