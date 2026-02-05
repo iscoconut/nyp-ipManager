@@ -369,12 +369,6 @@
                 <input type="number" v-model="agentConfig.manager.report_interval" placeholder="如：60000">
               </div>
 
-              <h4 style="margin: 15px 0 10px;">API 配置</h4>
-              <div class="form-group">
-                <label>Agent API Token</label>
-                <input v-model="agentConfig.api_token" placeholder="Agent 的 API Token">
-              </div>
-
               <div style="margin-top: 20px;">
                 <button class="btn btn-primary" @click="saveAgentConfig" :disabled="savingAgentConfig">
                   {{ savingAgentConfig ? '保存中...' : '保存配置' }}
