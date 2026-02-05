@@ -985,6 +985,10 @@
             if (!configResult.manager) {
               configResult.manager = {};
             }
+
+            // 检查是否需要自动配置
+            const needAutoConfig = !configResult.manager.url || !configResult.manager.token || !configResult.manager.node_id;
+
             // 自动填充 Manager URL（如果为空）
             if (!configResult.manager.url) {
               configResult.manager.url = window.location.origin;
@@ -1002,6 +1006,12 @@
               configResult.manager.report_interval = 60000;
             }
             agentConfig.value = configResult;
+
+            // 自动下发配置（如果 manager 配置为空）
+            if (needAutoConfig) {
+              console.log('[Auto] Agent manager config is empty, auto-provisioning...');
+              await saveAgentConfig();
+            }
           } catch (e) {
             agentConfigError.value = e.message;
           }
