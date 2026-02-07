@@ -254,7 +254,17 @@
           <!-- IP Pool Tab -->
           <div v-if="detailTab === 'pool'">
             <div v-if="nodePool">
-              <h4 style="margin: 15px 0 10px;">当前 IP</h4>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin: 15px 0 10px;">
+                <h4 style="margin: 0;">当前 IP</h4>
+                <button
+                  class="btn btn-sm btn-warning"
+                  @click="manualSwitchIP"
+                  :disabled="switchingIP || !nodePool.available?.length"
+                  v-if="nodePool.current?.ip"
+                >
+                  {{ switchingIP ? '切换中...' : '手动切换' }}
+                </button>
+              </div>
               <div class="ip-item current" v-if="nodePool.current?.ip">
                 <span>{{ nodePool.current.ip }} / {{ nodePool.current.netmask }}</span>
                 <span style="color: #666;">网关: {{ nodePool.current.gateway }}</span>
@@ -540,6 +550,7 @@
         const nodePool = ref(null);
         const nodePoolError = ref('');
         const nodeReporters = ref([]);
+        const switchingIP = ref(false);
 
         // 测试上报
         const testingReport = ref(false);
@@ -971,6 +982,36 @@
           }
         }
 
+        // 手动切换 IP
+        async function manualSwitchIP() {
+          if (!selectedNode.value) return;
+          if (!nodePool.value?.available?.length) {
+            alert('没有可用的备用 IP');
+            return;
+          }
+
+          const nextIP = nodePool.value.available[0]?.ip;
+          if (!confirm(`确定要手动切换 IP 吗？\n\n当前: ${nodePool.value.current?.ip}\n切换到: ${nextIP}\n\n这将立即触发 IP 切换和上报。`)) {
+            return;
+          }
+
+          switchingIP.value = true;
+          try {
+            const result = await api('POST', `/nodes/${selectedNode.value.id}/switch`);
+            if (result.error) {
+              alert('切换失败: ' + result.error);
+            } else {
+              alert(`切换成功！\n旧 IP: ${result.old_ip}\n新 IP: ${result.new_ip}`);
+              loadNodePool();
+              loadNodes();
+            }
+          } catch (e) {
+            alert('切换失败: ' + e.message);
+          } finally {
+            switchingIP.value = false;
+          }
+        }
+
         // 加载节点上报配置
         async function loadNodeReporters() {
           if (!selectedNode.value) return;
@@ -1263,7 +1304,7 @@
           showAddReporter, editingReporter, newReporter,
           loadNodes, loadLogs, addNode, deleteNodeConfirm, upgradeNodeAgent,
           showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,
-          addIP, removeAvailableIP, restoreDiscardedIP, removeDiscardedIP,
+          addIP, removeAvailableIP, restoreDiscardedIP, removeDiscardedIP, switchingIP, manualSwitchIP,
           loadAgentConfig, saveAgentConfig, upgradeAgent,
           editReporter, closeReporterModal, saveReporter, addReporter, toggleReporter, deleteReporter,
           testingReport, testReportResult, testReport,
