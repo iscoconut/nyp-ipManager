@@ -318,6 +318,22 @@ async function handleAPI(req, res, pathname, method, url) {
         });
 
         const result = await response.json();
+
+        // 如果切换成功，自动上报到配置的目标（nyanpass 等）
+        if (response.ok && result.success && result.new_ip) {
+          console.log(`[Switch] IP switch successful for ${nodeId}: ${result.old_ip} -> ${result.new_ip}`);
+          try {
+            const dispatcher = getDispatcher();
+            const reportResults = await dispatcher.report(nodeId, result.new_ip, result.old_ip);
+            console.log(`[Switch] Report results:`, reportResults);
+            // 将上报结果添加到响应中
+            result.report_results = reportResults;
+          } catch (reportError) {
+            console.error(`[Switch] Failed to report: ${reportError.message}`);
+            result.report_error = reportError.message;
+          }
+        }
+
         return jsonResponse(res, result, response.ok ? 200 : 400);
       } catch (error) {
         return jsonResponse(res, { error: `Failed to contact agent: ${error.message}` }, 500);
