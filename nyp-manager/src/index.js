@@ -720,12 +720,44 @@ async function fetchNodeStatus(node) {
  */
 function startStatusRefreshJob() {
   const REFRESH_INTERVAL = 10000; // 10秒刷新一次
+  const lastKnownIPs = new Map(); // 记录每个节点的上次 IP
 
   async function refreshAllNodes() {
     const nodes = getAllNodes();
     for (const node of nodes) {
       const status = await fetchNodeStatus(node);
       if (!status.error) {
+        // 检测 IP 变化
+        const currentIP = status.current_ip;
+        const lastIP = lastKnownIPs.get(node.id);
+
+        if (lastIP && currentIP && lastIP !== currentIP) {
+          // IP 发生变化，触发上报
+          console.log(`[Status] IP change detected for ${node.id}: ${lastIP} -> ${currentIP}`);
+          try {
+            const dispatcher = getDispatcher();
+            const reportResults = await dispatcher.report(node.id, currentIP, lastIP);
+            console.log(`[Status] Auto-report results:`, reportResults);
+
+            // 记录日志
+            addLog({
+              node_id: node.id,
+              action: 'auto_report',
+              old_ip: lastIP,
+              new_ip: currentIP,
+              result: 'success',
+              message: 'IP change detected, auto-reported'
+            });
+          } catch (e) {
+            console.error(`[Status] Auto-report failed:`, e.message);
+          }
+        }
+
+        // 更新记录的 IP
+        if (currentIP) {
+          lastKnownIPs.set(node.id, currentIP);
+        }
+
         updateNodeStatusAndBroadcast(node.id, status);
       } else {
         updateNodeStatusAndBroadcast(node.id, { error: true, message: status.message });
