@@ -169,9 +169,6 @@
                 </td>
                 <td>
                   <button class="btn btn-sm btn-primary" @click="showNodeDetail(node)">详情</button>
-                  <button class="btn btn-sm btn-warning" @click="switchNodeIP(node)" :disabled="node._switching || node._loading || node._error">
-                    {{ node._switching ? '切换中...' : '切换 IP' }}
-                  </button>
                   <button class="btn btn-sm btn-success" @click="upgradeNodeAgent(node)" :disabled="node._upgrading">
                     {{ node._upgrading ? '升级中' : '升级' }}
                   </button>
@@ -1246,37 +1243,6 @@
           return '已连接';
         }
 
-        // 首页切换 IP
-        async function switchNodeIP(node) {
-          // 先获取当前 IP 信息
-          let currentIP = node.status?.current_ip || '未知';
-          if (!confirm(`确定要手动切换 ${node.name} 的 IP 吗？\n\n当前 IP: ${currentIP}\n\n这将立即触发 IP 切换并上报到配置的目标。`)) {
-            return;
-          }
-
-          // 找到节点索引并设置切换状态
-          const index = nodes.value.findIndex(n => n.id === node.id);
-          if (index !== -1) {
-            nodes.value[index] = { ...nodes.value[index], _switching: true };
-          }
-
-          try {
-            const result = await api('POST', `/nodes/${node.id}/switch`);
-            if (result.error) {
-              alert('切换失败: ' + result.error);
-            } else {
-              alert(`切换成功！\n旧 IP: ${result.old_ip || currentIP}\n新 IP: ${result.new_ip}`);
-              loadNodes();
-            }
-          } catch (e) {
-            alert('切换失败: ' + e.message);
-          } finally {
-            if (index !== -1) {
-              nodes.value[index] = { ...nodes.value[index], _switching: false };
-            }
-          }
-        }
-
         // 首页升级 Agent
         async function upgradeNodeAgent(node) {
           if (!confirm(`确定升级 ${node.name} 的 Agent？`)) return;
@@ -1336,7 +1302,7 @@
           showAddIP, newIP,
           agentConfig, agentConfigError, savingAgentConfig, agentConfigSaved, upgradingAgent, agentVersion,
           showAddReporter, editingReporter, newReporter,
-          loadNodes, loadLogs, addNode, deleteNodeConfirm, switchNodeIP, upgradeNodeAgent,
+          loadNodes, loadLogs, addNode, deleteNodeConfirm, upgradeNodeAgent,
           showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,
           addIP, removeAvailableIP, restoreDiscardedIP, removeDiscardedIP, switchingIP, manualSwitchIP,
           loadAgentConfig, saveAgentConfig, upgradeAgent,
