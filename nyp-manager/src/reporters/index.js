@@ -1,4 +1,5 @@
 import { createNyanpassReporter } from './nyanpass.js';
+import { createAliyunGtmReporter } from './aliyun-gtm.js';
 import { getReporters, addLog } from '../db.js';
 
 /**
@@ -21,11 +22,9 @@ export class ReporterDispatcher {
         case 'nyanpass':
           this.reporters.set(key, createNyanpassReporter(config));
           break;
-        // 预留其他类型
-        case 'aliyun':
-          // TODO: 实现阿里云上报
-          console.log('[Reporter] Aliyun reporter not implemented yet');
-          return null;
+        case 'aliyun-gtm':
+          this.reporters.set(key, createAliyunGtmReporter(config));
+          break;
         default:
           console.log(`[Reporter] Unknown reporter type: ${type}`);
           return null;
