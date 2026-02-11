@@ -123,6 +123,7 @@
       <div class="tabs">
         <div class="tab" :class="{ active: currentTab === 'nodes' }" @click="currentTab = 'nodes'">节点管理</div>
         <div class="tab" :class="{ active: currentTab === 'logs' }" @click="currentTab = 'logs'; loadLogs()">操作日志</div>
+        <div class="tab" :class="{ active: currentTab === 'deploy' }" @click="currentTab = 'deploy'">Agent 部署</div>
       </div>
 
       <!-- Nodes Tab -->
@@ -207,6 +208,69 @@
             </div>
           </div>
           <p v-else style="color: #666; text-align: center; padding: 40px;">暂无日志</p>
+        </div>
+      </div>
+
+      <!-- Deploy Tab -->
+      <div v-if="currentTab === 'deploy'">
+        <div class="card">
+          <h2>Agent 部署命令</h2>
+          <p style="color: #666; margin-bottom: 20px;">在目标服务器上执行以下命令来部署 nyp-agent</p>
+
+          <div style="margin-bottom: 20px;">
+            <h4 style="margin-bottom: 10px;">1. 克隆仓库并安装</h4>
+            <div style="position: relative;">
+              <pre style="background: #1a1a1a; color: #e0e0e0; padding: 15px; border-radius: 4px; overflow-x: auto; font-family: 'Monaco', 'Consolas', monospace; font-size: 13px; line-height: 1.5;">{{ deployCommand }}</pre>
+              <button
+                class="btn btn-sm btn-primary"
+                style="position: absolute; top: 10px; right: 10px;"
+                @click="copyDeployCommand"
+              >
+                {{ copiedDeploy ? '已复制' : '复制' }}
+              </button>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 20px;">
+            <h4 style="margin-bottom: 10px;">2. 初始化配置文件</h4>
+            <div style="position: relative;">
+              <pre style="background: #1a1a1a; color: #e0e0e0; padding: 15px; border-radius: 4px; overflow-x: auto; font-family: 'Monaco', 'Consolas', monospace; font-size: 13px; line-height: 1.5;">{{ configCommand }}</pre>
+              <button
+                class="btn btn-sm btn-primary"
+                style="position: absolute; top: 10px; right: 10px;"
+                @click="copyConfigCommand"
+              >
+                {{ copiedConfig ? '已复制' : '复制' }}
+              </button>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 20px;">
+            <h4 style="margin-bottom: 10px;">3. 启动服务</h4>
+            <div style="position: relative;">
+              <pre style="background: #1a1a1a; color: #e0e0e0; padding: 15px; border-radius: 4px; overflow-x: auto; font-family: 'Monaco', 'Consolas', monospace; font-size: 13px; line-height: 1.5;">{{ startCommand }}</pre>
+              <button
+                class="btn btn-sm btn-primary"
+                style="position: absolute; top: 10px; right: 10px;"
+                @click="copyStartCommand"
+              >
+                {{ copiedStart ? '已复制' : '复制' }}
+              </button>
+            </div>
+          </div>
+
+          <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-top: 20px;">
+            <h4 style="margin-bottom: 10px;">部署后配置</h4>
+            <p style="color: #666; font-size: 14px; margin-bottom: 10px;">
+              Agent 部署完成后，在本管理面板中添加节点：
+            </p>
+            <ol style="color: #666; font-size: 14px; padding-left: 20px; line-height: 1.8;">
+              <li>点击「节点管理」→「添加节点」</li>
+              <li>填写节点名称和 Agent URL（如 http://服务器IP:3000）</li>
+              <li>添加后系统会自动下发 Manager 配置到 Agent</li>
+              <li>在节点详情的「IP 池」中添加备用 IP</li>
+            </ol>
+          </div>
         </div>
       </div>
 
@@ -578,6 +642,51 @@
           type: 'nyanpass',
           config: { admin_url: '', username: '', password: '', device_group_id: '' }
         });
+
+        // Agent 部署命令
+        const deployCommand = `# 克隆仓库
+git clone https://github.com/iscoconut/nyp-ipManager.git /tmp/nyp-ipManager
+
+# 进入 agent 目录并安装
+cd /tmp/nyp-ipManager/nyp-agent
+sudo bash install.sh`;
+
+        const configCommand = `# 复制配置文件模板
+sudo cp /opt/nyp-agent/config/config.example.json /opt/nyp-agent/config/config.json
+
+# 编辑配置（设置网卡、检测目标等）
+sudo nano /opt/nyp-agent/config/config.json`;
+
+        const startCommand = `# 启动服务
+sudo systemctl start nyp-agent
+
+# 设置开机自启
+sudo systemctl enable nyp-agent
+
+# 查看日志
+sudo journalctl -u nyp-agent -f`;
+
+        const copiedDeploy = ref(false);
+        const copiedConfig = ref(false);
+        const copiedStart = ref(false);
+
+        function copyDeployCommand() {
+          navigator.clipboard.writeText(deployCommand);
+          copiedDeploy.value = true;
+          setTimeout(() => { copiedDeploy.value = false; }, 2000);
+        }
+
+        function copyConfigCommand() {
+          navigator.clipboard.writeText(configCommand);
+          copiedConfig.value = true;
+          setTimeout(() => { copiedConfig.value = false; }, 2000);
+        }
+
+        function copyStartCommand() {
+          navigator.clipboard.writeText(startCommand);
+          copiedStart.value = true;
+          setTimeout(() => { copiedStart.value = false; }, 2000);
+        }
 
         // API 请求
         async function api(method, path, body = null) {
@@ -1302,6 +1411,9 @@
           showAddIP, newIP,
           agentConfig, agentConfigError, savingAgentConfig, agentConfigSaved, upgradingAgent, agentVersion,
           showAddReporter, editingReporter, newReporter,
+          deployCommand, configCommand, startCommand,
+          copiedDeploy, copiedConfig, copiedStart,
+          copyDeployCommand, copyConfigCommand, copyStartCommand,
           loadNodes, loadLogs, addNode, deleteNodeConfirm, upgradeNodeAgent,
           showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,
           addIP, removeAvailableIP, restoreDiscardedIP, removeDiscardedIP, switchingIP, manualSwitchIP,
