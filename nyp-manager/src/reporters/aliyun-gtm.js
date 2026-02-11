@@ -13,8 +13,15 @@ export class AliyunGtmReporter {
     this.region = config.region || 'ap-southeast-1';
     this.addressId = config.address_id;
     this.addressName = config.address_name;
-    this.healthTemplateId = config.health_template_id;
-    this.healthPort = config.health_port || 22;
+    // 支持新的 health_tasks 数组配置，同时兼容旧的单个配置
+    if (config.health_tasks && Array.isArray(config.health_tasks)) {
+      this.healthTasks = config.health_tasks.filter(t => t.template_id);
+    } else if (config.health_template_id) {
+      // 向后兼容旧配置
+      this.healthTasks = [{ template_id: config.health_template_id, port: config.health_port || 22 }];
+    } else {
+      this.healthTasks = [];
+    }
   }
 
   /**
@@ -109,13 +116,13 @@ export class AliyunGtmReporter {
    * 更新 GTM 地址
    */
   async updateAddress(newIp) {
-    // 构建 HealthTasks JSON
-    const healthTasks = JSON.stringify([
-      {
-        Port: this.healthPort,
-        TemplateId: this.healthTemplateId
-      }
-    ]);
+    // 构建 HealthTasks JSON（支持多个健康检查任务）
+    const healthTasks = JSON.stringify(
+      this.healthTasks.map(task => ({
+        Port: task.port || 22,
+        TemplateId: task.template_id
+      }))
+    );
 
     const params = {
       AddressId: this.addressId,

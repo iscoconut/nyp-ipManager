@@ -587,12 +587,13 @@
               <input v-model="newReporter.config.address_name" placeholder="地址名称">
             </div>
             <div class="form-group">
-              <label>健康检查模板 ID</label>
-              <input v-model="newReporter.config.health_template_id" placeholder="如：mtp-923822761140051968">
-            </div>
-            <div class="form-group">
-              <label>健康检查端口</label>
-              <input type="number" v-model="newReporter.config.health_port" placeholder="如：22">
+              <label>健康检查任务</label>
+              <div v-for="(task, index) in newReporter.config.health_tasks" :key="index" style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+                <input v-model="task.template_id" placeholder="模板 ID，如：mtp-xxx" style="flex: 2;">
+                <input type="number" v-model="task.port" placeholder="端口" style="flex: 1; width: 80px;">
+                <button type="button" class="btn btn-danger" style="padding: 4px 8px;" @click="removeHealthTask(index)">&times;</button>
+              </div>
+              <button type="button" class="btn" style="margin-top: 4px;" @click="addHealthTask">+ 添加健康检查</button>
             </div>
           </div>
           <div class="modal-footer">
@@ -700,10 +701,22 @@
               region: 'ap-southeast-1',
               address_id: '',
               address_name: '',
-              health_template_id: '',
-              health_port: 22
+              health_tasks: [{ template_id: '', port: 22 }]
             };
           }
+        }
+
+        // 添加健康检查任务
+        function addHealthTask() {
+          if (!newReporter.config.health_tasks) {
+            newReporter.config.health_tasks = [];
+          }
+          newReporter.config.health_tasks.push({ template_id: '', port: 22 });
+        }
+
+        // 删除健康检查任务
+        function removeHealthTask(index) {
+          newReporter.config.health_tasks.splice(index, 1);
         }
 
         // Agent 部署命令
@@ -1482,7 +1495,7 @@ sudo journalctl -u nyp-agent -f`;
           showNodeDetail, loadNodePool, loadNodeReporters, updateNodeSettings,
           addIP, removeAvailableIP, restoreDiscardedIP, removeDiscardedIP, switchingIP, manualSwitchIP,
           loadAgentConfig, saveAgentConfig, upgradeAgent,
-          editReporter, closeReporterModal, saveReporter, addReporter, toggleReporter, deleteReporter, onReporterTypeChange,
+          editReporter, closeReporterModal, saveReporter, addReporter, toggleReporter, deleteReporter, onReporterTypeChange, addHealthTask, removeHealthTask,
           testingReport, testReportResult, testReport,
           formatTime, getStatusClass, getStatusText
         };
