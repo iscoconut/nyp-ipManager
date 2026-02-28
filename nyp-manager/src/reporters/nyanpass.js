@@ -43,7 +43,7 @@ export class NyanpassReporter {
   /**
    * 获取设备组信息
    */
-  async getDeviceGroup() {
+  async getDeviceGroup(retried = false) {
     if (!this.token) {
       await this.login();
     }
@@ -60,10 +60,10 @@ export class NyanpassReporter {
 
     if (!response.ok) {
       // token 过期时重新登录重试一次
-      if (response.status === 401 || response.status === 403) {
+      if (!retried && (response.status === 401 || response.status === 403)) {
         this.token = null;
         await this.login();
-        return this.getDeviceGroup();
+        return this.getDeviceGroup(true);
       }
       throw new Error(`Failed to get device groups: HTTP ${response.status}, body: ${JSON.stringify(data)}`);
     }
@@ -74,10 +74,13 @@ export class NyanpassReporter {
       throw new Error(`Unexpected device group response format: ${JSON.stringify(data).slice(0, 500)}`);
     }
 
-    const deviceGroup = groups.find(d => d.id === this.deviceGroupId);
+    // ID 类型兼容：配置中可能是字符串，API 返回可能是数字
+    const targetId = Number(this.deviceGroupId);
+    const deviceGroup = groups.find(d => Number(d.id) === targetId);
 
     if (!deviceGroup) {
-      throw new Error(`Device group #${this.deviceGroupId} not found in ${groups.length} groups`);
+      const ids = groups.map(d => d.id).join(', ');
+      throw new Error(`Device group #${this.deviceGroupId} not found. Available IDs: [${ids}]`);
     }
 
     return deviceGroup;
@@ -112,28 +115,16 @@ export class NyanpassReporter {
       connect_host: newIp
     };
 
-    // 尝试 PUT，失败则回退到 POST
-    let response = await fetch(`${this.adminUrl}/api/v1/admin/devicegroup/${this.deviceGroupId}`, {
-      method: 'PUT',
+    // POST /api/v1/admin/devicegroup/{id} 为更新接口
+    // 注意：PUT 是创建接口，不能用于更新
+    const response = await fetch(`${this.adminUrl}/api/v1/admin/devicegroup/${deviceGroup.id}`, {
+      method: 'POST',
       headers: {
         'Authorization': this.token,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(updatePayload)
     });
-
-    // 如果 PUT 返回 404/405，回退到 POST
-    if (response.status === 404 || response.status === 405) {
-      console.log(`[Nyanpass] PUT returned ${response.status}, falling back to POST`);
-      response = await fetch(`${this.adminUrl}/api/v1/admin/devicegroup/${this.deviceGroupId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': this.token,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(updatePayload)
-      });
-    }
 
     const result = await response.json().catch(() => null);
 
