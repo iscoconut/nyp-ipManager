@@ -355,7 +355,10 @@
                 <div class="ip-item discarded" v-for="ip in nodePool.discarded" :key="ip.ip">
                   <div>
                     <span>{{ ip.ip }} / {{ ip.netmask }}</span>
-                    <br><small style="color: #666;">废弃于: {{ formatTime(ip.discarded_at) }}</small>
+                    <br><small style="color: #666;">
+                      废弃于: {{ formatTime(ip.discarded_at) }}
+                      <span v-if="ip.reason"> | 原因: {{ formatReason(ip.reason) }}</span>
+                    </small>
                   </div>
                   <div>
                     <button class="btn btn-sm btn-success" @click="restoreDiscardedIP(ip.ip)">恢复</button>
@@ -1412,6 +1415,17 @@ sudo journalctl -u nyp-agent -f`;
           return new Date(time).toLocaleString('zh-CN');
         }
 
+        // 格式化废弃原因
+        function formatReason(reason) {
+          const reasons = {
+            'auto_switch': '自动切换',
+            'manual': '手动废弃',
+            'health_check_failed': '健康检查失败',
+            'bandwidth_low': '带宽过低'
+          };
+          return reasons[reason] || reason;
+        }
+
         // 获取状态样式
         function getStatusClass(node) {
           if (node._loading) return 'badge-warning';
@@ -1497,7 +1511,7 @@ sudo journalctl -u nyp-agent -f`;
           loadAgentConfig, saveAgentConfig, upgradeAgent,
           editReporter, closeReporterModal, saveReporter, addReporter, toggleReporter, deleteReporter, onReporterTypeChange, addHealthTask, removeHealthTask,
           testingReport, testReportResult, testReport,
-          formatTime, getStatusClass, getStatusText
+          formatTime, formatReason, getStatusClass, getStatusText
         };
       }
     }).mount('#app');
